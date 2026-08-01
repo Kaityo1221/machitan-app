@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "machitan-app-sdk54",
-    "slug": "machitan-app-sdk54",
-    "version": "1.0.0",
+    "name": "まちたん！",
+    "slug": "machitan-app",
+    "version": "0.1.0",
+    "description": "歩いて見つける、まち探索アプリ",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "machitanappsdk54",
+    "scheme": "machitan",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
+        "ios": {
       "supportsTablet": true
     },
     "android": {
@@ -18,8 +18,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+            "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
