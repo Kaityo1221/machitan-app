@@ -26,6 +26,23 @@ export async function readMapFile(
   const normalizedName = fileName.toLowerCase();
   const file = new File(uri);
 
+  if (normalizedName.endsWith('.csv')) {
+    const csvText = await file.text();
+    const pois = deduplicatePois(parseCsvText(csvText));
+
+    if (pois.length === 0) {
+      throw new Error(
+        'CSVに有効なポイポイ座標が見つかりませんでした。',
+      );
+    }
+
+    return {
+      sourceName: stripExtension(fileName),
+      pois,
+      areas: [],
+    };
+  }
+
   let kmlTexts: string[] = [];
 
   if (
@@ -67,7 +84,7 @@ export async function readMapFile(
     kmlTexts = [await file.text()];
   } else {
     throw new Error(
-      '読み込めるファイルはKMZまたはKMLです。',
+      '読み込めるファイルはKMZ、KML、CSVです。',
     );
   }
 
@@ -92,6 +109,412 @@ export async function readMapFile(
     pois,
     areas,
   };
+}
+
+
+const LATITUDE_HEADER_ALIASES = new Set([
+  'latitude',
+  'lat',
+  '緯度',
+  'y',
+]);
+
+const LONGITUDE_HEADER_ALIASES = new Set([
+  'longitude',
+  'lng',
+  'lon',
+  'long',
+  '経度',
+  'x',
+]);
+
+const NAME_HEADER_ALIASES = new Set([
+  'name',
+  'title',
+  '名称',
+  '名前',
+  'スポット名',
+  '地点名',
+  'ポイポイ名',
+  'wayspotname',
+  'waypointname',
+]);
+
+const DESCRIPTION_HEADER_ALIASES = new Set([
+  'description',
+  'desc',
+  '説明',
+  '詳細',
+  'メモ',
+  'note',
+  'notes',
+]);
+
+const LAYER_HEADER_ALIASES = new Set([
+  'layer',
+  'folder',
+  'group',
+  'category',
+  'type',
+  'レイヤー',
+  'フォルダ',
+  'グループ',
+  'カテゴリ',
+  '種別',
+]);
+
+function parseCsvText(csvText: string): Poi[] {
+  const normalizedText = csvText
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n');
+
+  if (!normalizedText.trim()) {
+    throw new Error('CSVが空です。');
+  }
+
+  const delimiter = detectCsvDelimiter(normalizedText);
+  const rows = parseDelimitedRows(normalizedText, delimiter)
+    .map((row) => row.map((cell) => cell.trim()))
+    .filter((row) => row.some(Boolean));
+
+  if (rows.length === 0) {
+    throw new Error('CSVにデータがありません。');
+  }
+
+  const headerInfo = findCsvColumns(rows[0]);
+  const hasHeader =
+    headerInfo.latitudeIndex !== -1 &&
+    headerInfo.longitudeIndex !== -1;
+
+  const inferredInfo = hasHeader
+    ? headerInfo
+    : inferCsvColumns(rows);
+
+  if (
+    inferredInfo.latitudeIndex === -1 ||
+    inferredInfo.longitudeIndex === -1
+  ) {
+    throw new Error(
+      'CSVの緯度・経度列を判別できませんでした。列名を「latitude / longitude」または「緯度 / 経度」にしてください。',
+    );
+  }
+
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+
+  return dataRows.flatMap((row, rowIndex) => {
+    const latitude = parseCsvCoordinate(
+      row[inferredInfo.latitudeIndex],
+    );
+    const longitude = parseCsvCoordinate(
+      row[inferredInfo.longitudeIndex],
+    );
+
+    if (
+      latitude === null ||
+      longitude === null ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      return [];
+    }
+
+    const name = readCsvCell(
+      row,
+      inferredInfo.nameIndex,
+    );
+    const description = readCsvCell(
+      row,
+      inferredInfo.descriptionIndex,
+    );
+    const layer = readCsvCell(
+      row,
+      inferredInfo.layerIndex,
+    );
+
+    return [
+      {
+        id: createStableId(
+          'poi',
+          `${latitude.toFixed(7)},${longitude.toFixed(7)}`,
+        ),
+        name: name || `ポイポイ ${rowIndex + 1}`,
+        description,
+        layer,
+        latitude,
+        longitude,
+      },
+    ];
+  });
+}
+
+type CsvColumnInfo = {
+  latitudeIndex: number;
+  longitudeIndex: number;
+  nameIndex: number;
+  descriptionIndex: number;
+  layerIndex: number;
+};
+
+function findCsvColumns(headerRow: string[]): CsvColumnInfo {
+  const normalizedHeaders = headerRow.map(normalizeCsvHeader);
+
+  return {
+    latitudeIndex: findHeaderIndex(
+      normalizedHeaders,
+      LATITUDE_HEADER_ALIASES,
+    ),
+    longitudeIndex: findHeaderIndex(
+      normalizedHeaders,
+      LONGITUDE_HEADER_ALIASES,
+    ),
+    nameIndex: findHeaderIndex(
+      normalizedHeaders,
+      NAME_HEADER_ALIASES,
+    ),
+    descriptionIndex: findHeaderIndex(
+      normalizedHeaders,
+      DESCRIPTION_HEADER_ALIASES,
+    ),
+    layerIndex: findHeaderIndex(
+      normalizedHeaders,
+      LAYER_HEADER_ALIASES,
+    ),
+  };
+}
+
+function inferCsvColumns(rows: string[][]): CsvColumnInfo {
+  const sampleRows = rows.slice(0, 20);
+  const columnCount = Math.max(
+    ...sampleRows.map((row) => row.length),
+  );
+
+  const valuesByColumn = Array.from(
+    { length: columnCount },
+    (_, columnIndex) =>
+      sampleRows
+        .map((row) => parseCsvCoordinate(row[columnIndex]))
+        .filter((value): value is number => value !== null),
+  );
+
+  const numericColumnIndexes = valuesByColumn
+    .map((values, index) => ({ values, index }))
+    .filter(({ values }) => values.length > 0)
+    .map(({ index }) => index);
+
+  const obviousLongitudeIndex =
+    numericColumnIndexes.find((index) =>
+      valuesByColumn[index].some(
+        (value) => Math.abs(value) > 90,
+      ),
+    ) ?? -1;
+
+  const latitudeIndex =
+    obviousLongitudeIndex !== -1
+      ? selectBestCoordinateColumn(
+          valuesByColumn,
+          'latitude',
+          new Set<number>([obviousLongitudeIndex]),
+        )
+      : numericColumnIndexes[0] ?? -1;
+
+  const longitudeIndex =
+    obviousLongitudeIndex !== -1
+      ? obviousLongitudeIndex
+      : numericColumnIndexes.find(
+          (index) => index !== latitudeIndex,
+        ) ?? -1;
+
+  const excluded = new Set([
+    latitudeIndex,
+    longitudeIndex,
+  ]);
+
+  const nameIndex = Array.from(
+    { length: columnCount },
+    (_, index) => index,
+  ).find(
+    (index) =>
+      !excluded.has(index) &&
+      sampleRows.some((row) => {
+        const value = row[index]?.trim();
+        return Boolean(value) && parseCsvCoordinate(value) === null;
+      }),
+  ) ?? -1;
+
+  return {
+    latitudeIndex,
+    longitudeIndex,
+    nameIndex,
+    descriptionIndex: -1,
+    layerIndex: -1,
+  };
+}
+
+function selectBestCoordinateColumn(
+  valuesByColumn: number[][],
+  kind: 'latitude' | 'longitude',
+  excludedIndexes: ReadonlySet<number>,
+) {
+  let bestIndex = -1;
+  let bestScore = -1;
+
+  valuesByColumn.forEach((values, index) => {
+    if (excludedIndexes.has(index) || values.length === 0) {
+      return;
+    }
+
+    const validCount = values.filter((value) =>
+      kind === 'latitude'
+        ? Math.abs(value) <= 90
+        : Math.abs(value) <= 180,
+    ).length;
+
+    const longitudeBonus =
+      kind === 'longitude'
+        ? values.filter((value) => Math.abs(value) > 90).length * 3
+        : 0;
+
+    const score = validCount + longitudeBonus;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function detectCsvDelimiter(text: string) {
+  const sample = text.split('\n').slice(0, 8).join('\n');
+  const candidates = [',', '\t', ';'];
+
+  return candidates.reduce(
+    (best, candidate) => {
+      const count = countDelimiterOutsideQuotes(
+        sample,
+        candidate,
+      );
+
+      return count > best.count
+        ? { delimiter: candidate, count }
+        : best;
+    },
+    { delimiter: ',', count: -1 },
+  ).delimiter;
+}
+
+function countDelimiterOutsideQuotes(
+  text: string,
+  delimiter: string,
+) {
+  let count = 0;
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (character === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && character === delimiter) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function parseDelimitedRows(
+  text: string,
+  delimiter: string,
+) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  const finishCell = () => {
+    row.push(cell);
+    cell = '';
+  };
+
+  const finishRow = () => {
+    finishCell();
+    rows.push(row);
+    row = [];
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (character === '"') {
+      if (inQuotes && text[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && character === delimiter) {
+      finishCell();
+    } else if (!inQuotes && character === '\n') {
+      finishRow();
+    } else {
+      cell += character;
+    }
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    finishRow();
+  }
+
+  return rows;
+}
+
+function normalizeCsvHeader(value: string) {
+  return value
+    .replace(/^\uFEFF/, '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_\-./()\[\]{}]/g, '');
+}
+
+function findHeaderIndex(
+  normalizedHeaders: string[],
+  aliases: ReadonlySet<string>,
+) {
+  return normalizedHeaders.findIndex((header) =>
+    aliases.has(header),
+  );
+}
+
+function parseCsvCoordinate(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value
+    .normalize('NFKC')
+    .trim()
+    .replace(/[°度]/g, '');
+
+  if (!/^[-+]?\d+(?:\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : null;
+}
+
+function readCsvCell(
+  row: string[],
+  index: number,
+) {
+  return index >= 0 ? row[index]?.trim() ?? '' : '';
 }
 
 function parseKmlText(kmlText: string) {
@@ -492,5 +915,5 @@ function createStableId(prefix: string, value: string) {
 }
 
 function stripExtension(fileName: string) {
-  return fileName.replace(/\.(kmz|kml|zip)$/i, '');
+  return fileName.replace(/\.(kmz|kml|csv|zip)$/i, '');
 }

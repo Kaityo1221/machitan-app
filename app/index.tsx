@@ -18,6 +18,7 @@ import MapView, {
 } from 'react-native-maps';
 
 import {
+  associateAreasWithPois,
   calculateDistanceMeters,
   findNearbyUndiscoveredPois,
 } from '../src/lib/geo';
@@ -151,6 +152,27 @@ export default function HomeScreen() {
   const discoveredPoiIdSet = useMemo(
     () => new Set(discoveredPoiIds),
     [discoveredPoiIds],
+  );
+
+  const areaPoiAssociations = useMemo(
+    () =>
+      loadedMap
+        ? associateAreasWithPois(
+            loadedMap.areas,
+            loadedMap.pois,
+          )
+        : [],
+    [loadedMap],
+  );
+
+  const poiIdsWithAssociatedArea = useMemo(
+    () =>
+      new Set(
+        areaPoiAssociations.map(
+          (association) => association.poiId,
+        ),
+      ),
+    [areaPoiAssociations],
   );
 
   const discoveredCount = discoveredPoiIds.length;
@@ -499,7 +521,7 @@ export default function HomeScreen() {
     if (status === 'running' || status === 'paused') {
       Alert.alert(
         '計測中です',
-        'KMZを入れ替える前に計測を終了してください。',
+        '地図データを入れ替える前に計測を終了してください。',
       );
       return;
     }
@@ -538,14 +560,14 @@ export default function HomeScreen() {
       await saveGameState(parsedMap, []);
 
       Alert.alert(
-        'KMZを読み込みました',
+        '地図データを読み込みました',
         `${parsedMap.pois.length}件のポイポイを地図に表示します。`,
       );
     } catch (error) {
       console.error(error);
 
       Alert.alert(
-        'KMZを読み込めませんでした',
+        '地図データを読み込めませんでした',
         error instanceof Error
           ? error.message
           : 'ファイルを確認してください。',
@@ -590,7 +612,7 @@ export default function HomeScreen() {
     }
 
     Alert.alert(
-      'KMZを外す',
+      '地図データを外す',
       '読み込んだ地図と攻略状況を端末から削除しますか？',
       [
         { text: 'キャンセル', style: 'cancel' },
@@ -616,13 +638,12 @@ export default function HomeScreen() {
   };
 
   const fitMapToLoadedData = (map: ParsedMap) => {
-    const coordinates: Coordinates[] = [
-      ...map.pois.map((poi) => ({
+    const coordinates: Coordinates[] = map.pois.map(
+      (poi) => ({
         latitude: poi.latitude,
         longitude: poi.longitude,
-      })),
-      ...map.areas.flatMap((area) => area.coordinates),
-    ];
+      }),
+    );
 
     if (coordinates.length === 0) {
       return;
@@ -713,10 +734,10 @@ export default function HomeScreen() {
         <ActionButton
           label={
             isLoadingMap
-              ? 'KMZを読み込み中…'
+              ? 'ファイルを読み込み中…'
               : loadedMap
-                ? '別のKMZを読み込む'
-                : 'KMZを読み込む'
+                ? '別のファイルを読み込む'
+                : 'KMZ・KML・CSVを読み込む'
           }
           onPress={handlePickMapFile}
           disabled={isLoadingMap}
@@ -756,7 +777,7 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.discoveryRule}>
-            ポイポイから約{DISCOVERY_RADIUS_METERS}m以内で塗りつぶします
+            ポイポイから約{DISCOVERY_RADIUS_METERS}m以内で発見します
           </Text>
         </View>
       )}
@@ -798,39 +819,41 @@ export default function HomeScreen() {
             showsScale
             onMapReady={() => setIsMapReady(true)}
           >
-            {loadedMap?.areas.map((area) => (
-              <Polygon
-                key={area.id}
-                coordinates={area.coordinates}
-                strokeColor="rgba(55, 95, 58, 0.45)"
-                fillColor="rgba(55, 95, 58, 0.08)"
-                strokeWidth={1}
-              />
-            ))}
+            {areaPoiAssociations.map(
+              ({ area, poiId }) =>
+                discoveredPoiIdSet.has(poiId) ? (
+                  <Polygon
+                    key={area.id}
+                    coordinates={area.coordinates}
+                    strokeColor="rgba(55, 95, 58, 0.95)"
+                    fillColor="rgba(87, 166, 91, 0.52)"
+                    strokeWidth={2}
+                  />
+                ) : null,
+            )}
 
             {loadedMap?.pois.map((poi) => {
               const isDiscovered =
                 discoveredPoiIdSet.has(poi.id);
 
+              if (
+                !isDiscovered ||
+                poiIdsWithAssociatedArea.has(poi.id)
+              ) {
+                return null;
+              }
+
               return (
                 <Circle
-                  key={`circle-${poi.id}`}
+                  key={`fill-${poi.id}`}
                   center={{
                     latitude: poi.latitude,
                     longitude: poi.longitude,
                   }}
                   radius={DISCOVERY_RADIUS_METERS}
                   strokeWidth={2}
-                  strokeColor={
-                    isDiscovered
-                      ? 'rgba(55, 95, 58, 0.95)'
-                      : 'rgba(102, 110, 103, 0.65)'
-                  }
-                  fillColor={
-                    isDiscovered
-                      ? 'rgba(87, 166, 91, 0.52)'
-                      : 'rgba(120, 128, 121, 0.13)'
-                  }
+                  strokeColor="rgba(55, 95, 58, 0.95)"
+                  fillColor="rgba(87, 166, 91, 0.52)"
                 />
               );
             })}
@@ -884,7 +907,7 @@ export default function HomeScreen() {
             </Text>
 
             <Text style={styles.mapPlaceholderText}>
-              KMZを読み込むか、計測を開始すると地図を表示します
+              KMZ・KML・CSVを読み込むか、計測を開始すると地図を表示します
             </Text>
           </View>
         )}
@@ -996,7 +1019,7 @@ export default function HomeScreen() {
           />
 
           <ActionButton
-            label="KMZを外す"
+            label="地図データを外す"
             onPress={handleRemoveMap}
             secondary
             compact
