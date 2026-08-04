@@ -61,6 +61,114 @@ export function findNearbyUndiscoveredPois(
   });
 }
 
+
+/**
+ * 前回測位点から今回測位点までの線分が、ポイポイの攻略半径を
+ * 横切ったかを判定します。GPS測位の間に通過した地点の取り逃しを防ぎます。
+ */
+export function findUndiscoveredPoisNearPath(
+  from: Coordinates,
+  to: Coordinates,
+  pois: Poi[],
+  discoveredPoiIds: ReadonlySet<string>,
+  radiusMeters: number,
+) {
+  const midpointLatitude =
+    (from.latitude + to.latitude) / 2;
+  const latitudeMargin = radiusMeters / 111320;
+  const longitudeScale = Math.max(
+    Math.cos(degreesToRadians(midpointLatitude)),
+    0.01,
+  );
+  const longitudeMargin =
+    radiusMeters / (111320 * longitudeScale);
+
+  const minLatitude =
+    Math.min(from.latitude, to.latitude) - latitudeMargin;
+  const maxLatitude =
+    Math.max(from.latitude, to.latitude) + latitudeMargin;
+  const minLongitude =
+    Math.min(from.longitude, to.longitude) - longitudeMargin;
+  const maxLongitude =
+    Math.max(from.longitude, to.longitude) + longitudeMargin;
+
+  return pois.filter((poi) => {
+    if (discoveredPoiIds.has(poi.id)) {
+      return false;
+    }
+
+    // 2180件以上を常時表示しても、攻略判定は近傍候補だけ
+    // 詳細計算することでGPS更新時の負荷を抑えます。
+    if (
+      poi.latitude < minLatitude ||
+      poi.latitude > maxLatitude ||
+      poi.longitude < minLongitude ||
+      poi.longitude > maxLongitude
+    ) {
+      return false;
+    }
+
+    return (
+      calculateDistanceToPathMeters(poi, from, to) <=
+      radiusMeters
+    );
+  });
+}
+
+export function calculateDistanceToPathMeters(
+  point: Coordinates,
+  from: Coordinates,
+  to: Coordinates,
+) {
+  const referenceLatitude = degreesToRadians(
+    (point.latitude + from.latitude + to.latitude) / 3,
+  );
+
+  const project = (coordinate: Coordinates) => ({
+    x:
+      EARTH_RADIUS_METERS *
+      degreesToRadians(coordinate.longitude) *
+      Math.cos(referenceLatitude),
+    y:
+      EARTH_RADIUS_METERS *
+      degreesToRadians(coordinate.latitude),
+  });
+
+  const projectedPoint = project(point);
+  const projectedFrom = project(from);
+  const projectedTo = project(to);
+
+  const segmentX = projectedTo.x - projectedFrom.x;
+  const segmentY = projectedTo.y - projectedFrom.y;
+  const segmentLengthSquared =
+    segmentX * segmentX + segmentY * segmentY;
+
+  if (segmentLengthSquared === 0) {
+    return Math.hypot(
+      projectedPoint.x - projectedFrom.x,
+      projectedPoint.y - projectedFrom.y,
+    );
+  }
+
+  const projection = Math.max(
+    0,
+    Math.min(
+      1,
+      ((projectedPoint.x - projectedFrom.x) * segmentX +
+        (projectedPoint.y - projectedFrom.y) * segmentY) /
+        segmentLengthSquared,
+    ),
+  );
+
+  const closestX = projectedFrom.x + projection * segmentX;
+  const closestY = projectedFrom.y + projection * segmentY;
+
+  return Math.hypot(
+    projectedPoint.x - closestX,
+    projectedPoint.y - closestY,
+  );
+}
+
 /**
  * KMZ/KML内のPolygonを、中心または内包関係が最も近いポイポイへ関連付けます。
  * 未発見時はPolygonを描かず、関連ポイポイを発見した時だけ塗りつぶすために使います。

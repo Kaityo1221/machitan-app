@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Location from 'expo-location';
@@ -11,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import type { Region } from 'react-native-maps';
 import MapView, {
   Circle,
   Marker,
@@ -20,7 +20,7 @@ import MapView, {
 import {
   associateAreasWithPois,
   calculateDistanceMeters,
-  findNearbyUndiscoveredPois,
+  findUndiscoveredPoisNearPath,
 } from '../src/lib/geo';
 import { readMapFile } from '../src/lib/kmz';
 import {
@@ -43,9 +43,15 @@ type MeasurementStatus =
 const MAX_ACCEPTABLE_ACCURACY_METERS = 20;
 const MIN_MOVEMENT_METERS = 4;
 const MAX_REASONABLE_JUMP_METERS = 30;
+const MAX_WALKING_SPEED_METERS_PER_SECOND = 4.5;
 const DISCOVERY_RADIUS_METERS = 25;
-const LAST_DISCOVERY_STORAGE_KEY =
-  'machitan.latest-discovery.v1';
+const DEFAULT_EFFECT_RADIUS_METERS = 30;
+const MAX_DISCOVERY_ACCURACY_BONUS_METERS = 5;
+
+// 地図を縮小したときは、Apple Mapsに間引かれやすいピンではなく、
+// 全ポイポイを軽量な点として表示します。
+const OVERVIEW_MODE_LATITUDE_DELTA = 0.0015;
+const OVERVIEW_POI_RADIUS_METERS = 9;
 
 export default function HomeScreen() {
   useKeepAwake();
@@ -71,13 +77,16 @@ export default function HomeScreen() {
   const [discoveredPoiIds, setDiscoveredPoiIds] =
     useState<string[]>([]);
 
-  const [latestDiscovery, setLatestDiscovery] =
-    useState<string | null>(null);
-
   const [isLoadingMap, setIsLoadingMap] =
     useState(false);
 
   const [isMapReady, setIsMapReady] =
+    useState(false);
+
+  const [isMapOverview, setIsMapOverview] =
+    useState(false);
+
+  const [isTownGrowthMode, setIsTownGrowthMode] =
     useState(false);
 
   const startedAtRef = useRef<number | null>(null);
@@ -86,6 +95,9 @@ export default function HomeScreen() {
 
   const previousCoordinatesRef =
     useRef<TrackedCoordinates | null>(null);
+
+  const previousLocationTimestampRef =
+    useRef<number | null>(null);
 
   const locationSubscriptionRef =
     useRef<Location.LocationSubscription | null>(null);
@@ -165,15 +177,6 @@ export default function HomeScreen() {
     [loadedMap],
   );
 
-  const poiIdsWithAssociatedArea = useMemo(
-    () =>
-      new Set(
-        areaPoiAssociations.map(
-          (association) => association.poiId,
-        ),
-      ),
-    [areaPoiAssociations],
-  );
 
   const discoveredCount = discoveredPoiIds.length;
   const totalPoiCount = loadedMap?.pois.length ?? 0;
@@ -184,6 +187,142 @@ export default function HomeScreen() {
       : Math.round(
           (discoveredCount / totalPoiCount) * 100,
         );
+
+  const expandedAreaSquareMeters = useMemo(() => {
+    if (!loadedMap || discoveredPoiIds.length === 0) {
+      return 0;
+    }
+
+    const discoveredPois = loadedMap.pois.filter((poi) =>
+      discoveredPoiIdSet.has(poi.id),
+    );
+
+    if (discoveredPois.length === 0) {
+      return 0;
+    }
+
+    const GRID_SIZE_METERS = 2;
+    const referenceLatitudeRadians =
+      (discoveredPois[0].latitude * Math.PI) / 180;
+    const metersPerLatitudeDegree = 111320;
+    const metersPerLongitudeDegree =
+      111320 * Math.cos(referenceLatitudeRadians);
+
+    const originLatitude = discoveredPois[0].latitude;
+    const originLongitude = discoveredPois[0].longitude;
+
+    const occupiedCells = new Set<string>();
+    const radiusInCells = Math.ceil(
+      DEFAULT_EFFECT_RADIUS_METERS /
+        GRID_SIZE_METERS,
+    );
+
+    for (const poi of discoveredPois) {
+      const centerX =
+        (poi.longitude - originLongitude) *
+        metersPerLongitudeDegree;
+      const centerY =
+        (poi.latitude - originLatitude) *
+        metersPerLatitudeDegree;
+
+      const centerCellX = Math.round(
+        centerX / GRID_SIZE_METERS,
+      );
+      const centerCellY = Math.round(
+        centerY / GRID_SIZE_METERS,
+      );
+
+      for (
+        let offsetX = -radiusInCells;
+        offsetX <= radiusInCells;
+        offsetX += 1
+      ) {
+        for (
+          let offsetY = -radiusInCells;
+          offsetY <= radiusInCells;
+          offsetY += 1
+        ) {
+          const cellCenterX =
+            (centerCellX + offsetX) *
+            GRID_SIZE_METERS;
+          const cellCenterY =
+            (centerCellY + offsetY) *
+            GRID_SIZE_METERS;
+
+          const distanceFromPoi = Math.hypot(
+            cellCenterX - centerX,
+            cellCenterY - centerY,
+          );
+
+          if (
+            distanceFromPoi <=
+            DEFAULT_EFFECT_RADIUS_METERS
+          ) {
+            occupiedCells.add(
+              `${centerCellX + offsetX}:${
+                centerCellY + offsetY
+              }`,
+            );
+          }
+        }
+      }
+    }
+
+    return (
+      occupiedCells.size *
+      GRID_SIZE_METERS *
+      GRID_SIZE_METERS
+    );
+  }, [
+    discoveredPoiIdSet,
+    discoveredPoiIds.length,
+    loadedMap,
+  ]);
+
+  const formattedExpandedArea =
+    expandedAreaSquareMeters >= 1000
+      ? `${(expandedAreaSquareMeters / 10000).toFixed(2)} ha`
+      : `${Math.round(expandedAreaSquareMeters)
+          .toString()
+          .replace(/\B(?=(\d{3})+(?!\d))/g, ',')} m²`;
+
+  const nearestPoiInfo = useMemo(() => {
+    if (!currentCoordinates || !loadedMap) {
+      return null;
+    }
+
+    let nearestPoi: ParsedMap['pois'][number] | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    for (const poi of loadedMap.pois) {
+      if (discoveredPoiIdSet.has(poi.id)) {
+        continue;
+      }
+
+      const distance = calculateDistanceMeters(
+        currentCoordinates,
+        poi,
+      );
+
+      if (distance < nearestDistance) {
+        nearestPoi = poi;
+        nearestDistance = distance;
+      }
+    }
+
+    if (!nearestPoi) {
+      return null;
+    }
+
+    return {
+      poi: nearestPoi,
+      distanceMeters: nearestDistance,
+    };
+  }, [
+    currentCoordinates,
+    discoveredPoiIdSet,
+    loadedMap,
+  ]);
 
   const mapInitialRegion = useMemo(() => {
     const firstPoi = loadedMap?.pois[0];
@@ -225,12 +364,6 @@ export default function HomeScreen() {
         );
       }
 
-      const savedLatestDiscovery =
-        await AsyncStorage.getItem(
-          LAST_DISCOVERY_STORAGE_KEY,
-        );
-
-      setLatestDiscovery(savedLatestDiscovery);
     } catch (error) {
       console.warn('保存データを復元できませんでした。', error);
     }
@@ -324,6 +457,7 @@ export default function HomeScreen() {
       accuracy: location.coords.accuracy,
     };
 
+    // 現在地表示は、距離計算に採用しない測位でも更新します。
     setCurrentCoordinates(nextCoordinates);
 
     const accuracy = nextCoordinates.accuracy ?? 9999;
@@ -343,19 +477,58 @@ export default function HomeScreen() {
       )}m）`,
     );
 
-    addWalkingDistance(nextCoordinates);
-    discoverNearbyPois(nextCoordinates);
+    const movement = evaluateMovement(
+      nextCoordinates,
+      location.timestamp,
+      location.coords.speed,
+    );
+
+    if (movement.shouldAddDistance) {
+      distanceMetersRef.current += movement.distanceMeters;
+      setDistanceMeters(distanceMetersRef.current);
+    }
+
+    if (movement.shouldDiscover) {
+      discoverPoisAlongMovement(
+        movement.discoveryStart,
+        nextCoordinates,
+      );
+    }
+
+    // 不自然なGPS飛びでも、次回の基準地点には更新します。
+    // ただし、その長い線分は攻略判定に使いません。
+    if (
+      movement.shouldUpdateBaseline ||
+      movement.isInvalidJump
+    ) {
+      previousCoordinatesRef.current = nextCoordinates;
+      previousLocationTimestampRef.current =
+        location.timestamp;
+    }
   };
 
-  const addWalkingDistance = (
+  const evaluateMovement = (
     nextCoordinates: TrackedCoordinates,
+    timestamp: number,
+    reportedSpeed: number | null,
   ) => {
     const previousCoordinates =
       previousCoordinatesRef.current;
+    const previousTimestamp =
+      previousLocationTimestampRef.current;
 
-    if (!previousCoordinates) {
-      previousCoordinatesRef.current = nextCoordinates;
-      return;
+    if (
+      !previousCoordinates ||
+      previousTimestamp === null
+    ) {
+      return {
+        distanceMeters: 0,
+        shouldAddDistance: false,
+        shouldUpdateBaseline: true,
+        isInvalidJump: false,
+        shouldDiscover: true,
+        discoveryStart: nextCoordinates,
+      };
     }
 
     const addedDistance = calculateDistanceMeters(
@@ -363,22 +536,63 @@ export default function HomeScreen() {
       nextCoordinates,
     );
 
-    if (
-      addedDistance >= MIN_MOVEMENT_METERS &&
-      addedDistance <= MAX_REASONABLE_JUMP_METERS
-    ) {
-      distanceMetersRef.current += addedDistance;
-      setDistanceMeters(distanceMetersRef.current);
-      previousCoordinatesRef.current = nextCoordinates;
-    } else if (
-      addedDistance > MAX_REASONABLE_JUMP_METERS
-    ) {
-      previousCoordinatesRef.current = nextCoordinates;
+    const elapsedSeconds = Math.max(
+      (timestamp - previousTimestamp) / 1000,
+      0.5,
+    );
+
+    const calculatedSpeed = addedDistance / elapsedSeconds;
+
+    const hasUsableReportedSpeed =
+      reportedSpeed !== null && reportedSpeed >= 0;
+
+    const isUnreasonableSpeed =
+      calculatedSpeed >
+        MAX_WALKING_SPEED_METERS_PER_SECOND ||
+      (hasUsableReportedSpeed &&
+        reportedSpeed >
+          MAX_WALKING_SPEED_METERS_PER_SECOND);
+
+    const maxReasonableDistance = Math.max(
+      MAX_REASONABLE_JUMP_METERS,
+      elapsedSeconds *
+        MAX_WALKING_SPEED_METERS_PER_SECOND +
+        5,
+    );
+
+    const isInvalidJump =
+      addedDistance > maxReasonableDistance ||
+      isUnreasonableSpeed;
+
+    if (isInvalidJump) {
+      return {
+        distanceMeters: 0,
+        shouldAddDistance: false,
+        shouldUpdateBaseline: false,
+        isInvalidJump: true,
+        shouldDiscover: false,
+        // GPSジャンプの線上や飛び先では攻略しません。
+        // 次の正常な測位で改めて判定します。
+        discoveryStart: nextCoordinates,
+      };
     }
+
+    return {
+      distanceMeters: addedDistance,
+      shouldAddDistance:
+        addedDistance >= MIN_MOVEMENT_METERS,
+      // 4m未満は基準を保持し、小さな揺れをまとめます。
+      shouldUpdateBaseline:
+        addedDistance >= MIN_MOVEMENT_METERS,
+      isInvalidJump: false,
+      shouldDiscover: true,
+      discoveryStart: previousCoordinates,
+    };
   };
 
-  const discoverNearbyPois = (
-    nextCoordinates: TrackedCoordinates,
+  const discoverPoisAlongMovement = (
+    from: TrackedCoordinates,
+    to: TrackedCoordinates,
   ) => {
     const currentMap = loadedMapRef.current;
 
@@ -386,12 +600,22 @@ export default function HomeScreen() {
       return;
     }
 
-    const newlyDiscovered = findNearbyUndiscoveredPois(
-      nextCoordinates,
-      currentMap.pois,
-      discoveredPoiIdsRef.current,
-      DISCOVERY_RADIUS_METERS,
+    const accuracyBonus = Math.min(
+      (to.accuracy ?? 0) / 2,
+      MAX_DISCOVERY_ACCURACY_BONUS_METERS,
     );
+
+    const effectiveDiscoveryRadius =
+      DISCOVERY_RADIUS_METERS + accuracyBonus;
+
+    const newlyDiscovered =
+      findUndiscoveredPoisNearPath(
+        from,
+        to,
+        currentMap.pois,
+        discoveredPoiIdsRef.current,
+        effectiveDiscoveryRadius,
+      );
 
     if (newlyDiscovered.length === 0) {
       return;
@@ -405,25 +629,15 @@ export default function HomeScreen() {
       nextDiscoveredSet.add(poi.id),
     );
 
-    const nextDiscoveredIds: string[] = Array.from(
+    const nextDiscoveredIds = Array.from(
       nextDiscoveredSet,
     );
 
     discoveredPoiIdsRef.current = nextDiscoveredSet;
     setDiscoveredPoiIds(nextDiscoveredIds);
 
-    const discoveryMessage =
-      newlyDiscovered.length === 1
-        ? `ポイポイ発見！ ${newlyDiscovered[0].name}`
-        : `ポイポイを${newlyDiscovered.length}件発見！`;
-
-    setLatestDiscovery(discoveryMessage);
-
-    void AsyncStorage.setItem(
-      LAST_DISCOVERY_STORAGE_KEY,
-      discoveryMessage,
-    );
-
+    // 発見時の音・振動・カットインは入れず、
+    // 数字と地図の色だけを静かに更新します。
     void saveGameState(currentMap, nextDiscoveredIds);
   };
 
@@ -431,6 +645,7 @@ export default function HomeScreen() {
     locationSubscriptionRef.current?.remove();
     locationSubscriptionRef.current = null;
     previousCoordinatesRef.current = null;
+    previousLocationTimestampRef.current = null;
   };
 
   const handleStart = async () => {
@@ -438,6 +653,7 @@ export default function HomeScreen() {
     startedAtRef.current = null;
     distanceMetersRef.current = 0;
     previousCoordinatesRef.current = null;
+    previousLocationTimestampRef.current = null;
 
     setElapsedMilliseconds(0);
     setDistanceMeters(0);
@@ -472,6 +688,7 @@ export default function HomeScreen() {
 
   const handleResume = async () => {
     previousCoordinatesRef.current = null;
+    previousLocationTimestampRef.current = null;
 
     const trackingStarted =
       await startLocationTracking();
@@ -551,12 +768,6 @@ export default function HomeScreen() {
 
       setLoadedMap(parsedMap);
       setDiscoveredPoiIds([]);
-      setLatestDiscovery(null);
-
-      await AsyncStorage.removeItem(
-        LAST_DISCOVERY_STORAGE_KEY,
-      );
-
       await saveGameState(parsedMap, []);
 
       Alert.alert(
@@ -593,12 +804,6 @@ export default function HomeScreen() {
           onPress: () => {
             discoveredPoiIdsRef.current = new Set();
             setDiscoveredPoiIds([]);
-            setLatestDiscovery(null);
-
-            void AsyncStorage.removeItem(
-              LAST_DISCOVERY_STORAGE_KEY,
-            );
-
             void saveGameState(loadedMap, []);
           },
         },
@@ -625,12 +830,7 @@ export default function HomeScreen() {
 
             setLoadedMap(null);
             setDiscoveredPoiIds([]);
-            setLatestDiscovery(null);
-
             void clearGameState();
-            void AsyncStorage.removeItem(
-              LAST_DISCOVERY_STORAGE_KEY,
-            );
           },
         },
       ],
@@ -689,6 +889,15 @@ export default function HomeScreen() {
         longitudeDelta: 0.004,
       },
       500,
+    );
+  };
+
+  const handleMapRegionChangeComplete = (
+    region: Region,
+  ) => {
+    setIsMapOverview(
+      region.latitudeDelta >=
+        OVERVIEW_MODE_LATITUDE_DELTA,
     );
   };
 
@@ -779,21 +988,34 @@ export default function HomeScreen() {
           <Text style={styles.discoveryRule}>
             ポイポイから約{DISCOVERY_RADIUS_METERS}m以内で発見します
           </Text>
-        </View>
-      )}
 
-      {latestDiscovery && (
-        <View style={styles.discoveryBanner}>
-          <Text style={styles.discoveryBannerText}>
-            {latestDiscovery}
-          </Text>
+          {nearestPoiInfo ? (
+            <Text style={styles.nearestPoiText}>
+              最寄りの未発見：{nearestPoiInfo.poi.name}
+              {'\n'}
+              あと約
+              {Math.max(
+                0,
+                Math.round(nearestPoiInfo.distanceMeters),
+              )}
+              m
+            </Text>
+          ) : totalPoiCount > 0 && discoveredCount === totalPoiCount ? (
+            <Text style={styles.nearestPoiText}>
+              すべてのポイポイを発見しました
+            </Text>
+          ) : null}
         </View>
       )}
 
       <View style={styles.mapCard}>
         <View style={styles.mapHeader}>
           <Text style={styles.mapTitle}>
-            {loadedMap ? '攻略マップ' : '現在地マップ'}
+            {isTownGrowthMode
+              ? 'まち育てマップ'
+              : loadedMap
+                ? '攻略マップ'
+                : '現在地マップ'}
           </Text>
 
           <Pressable
@@ -817,88 +1039,110 @@ export default function HomeScreen() {
             initialRegion={mapInitialRegion}
             showsCompass
             showsScale
+            showsUserLocation
+            showsMyLocationButton={false}
             onMapReady={() => setIsMapReady(true)}
+            onRegionChangeComplete={
+              handleMapRegionChangeComplete
+            }
           >
-            {areaPoiAssociations.map(
-              ({ area, poiId }) =>
-                discoveredPoiIdSet.has(poiId) ? (
-                  <Polygon
-                    key={area.id}
-                    coordinates={area.coordinates}
+
+            {isTownGrowthMode &&
+              areaPoiAssociations.map(
+                ({ area, poiId }) =>
+                  discoveredPoiIdSet.has(poiId) ? (
+                    <Polygon
+                      key={area.id}
+                      coordinates={area.coordinates}
+                      strokeColor="rgba(55, 95, 58, 0.95)"
+                      fillColor="rgba(87, 166, 91, 0.52)"
+                      strokeWidth={2}
+                    />
+                  ) : null,
+              )}
+
+            {isTownGrowthMode &&
+              loadedMap?.pois.map((poi) => {
+                const isDiscovered =
+                  discoveredPoiIdSet.has(poi.id);
+
+                if (!isDiscovered) {
+                  return null;
+                }
+
+                return (
+                  <Circle
+                    key={`fill-${poi.id}`}
+                    center={{
+                      latitude: poi.latitude,
+                      longitude: poi.longitude,
+                    }}
+                    radius={DEFAULT_EFFECT_RADIUS_METERS}
+                    strokeWidth={2}
                     strokeColor="rgba(55, 95, 58, 0.95)"
                     fillColor="rgba(87, 166, 91, 0.52)"
-                    strokeWidth={2}
                   />
-                ) : null,
-            )}
+                );
+              })}
 
-            {loadedMap?.pois.map((poi) => {
-              const isDiscovered =
-                discoveredPoiIdSet.has(poi.id);
+            {!isTownGrowthMode &&
+              isMapOverview &&
+              loadedMap?.pois.map((poi) => {
+                const isDiscovered =
+                  discoveredPoiIdSet.has(poi.id);
 
-              if (
-                !isDiscovered ||
-                poiIdsWithAssociatedArea.has(poi.id)
-              ) {
-                return null;
-              }
+                return (
+                  <Circle
+                    key={`overview-poi-${poi.id}`}
+                    center={{
+                      latitude: poi.latitude,
+                      longitude: poi.longitude,
+                    }}
+                    radius={OVERVIEW_POI_RADIUS_METERS}
+                    strokeWidth={1}
+                    strokeColor={
+                      isDiscovered
+                        ? 'rgba(55, 95, 58, 0.95)'
+                        : 'rgba(92, 101, 94, 0.95)'
+                    }
+                    fillColor={
+                      isDiscovered
+                        ? 'rgba(87, 166, 91, 0.92)'
+                        : 'rgba(123, 130, 124, 0.88)'
+                    }
+                  />
+                );
+              })}
 
-              return (
-                <Circle
-                  key={`fill-${poi.id}`}
-                  center={{
-                    latitude: poi.latitude,
-                    longitude: poi.longitude,
-                  }}
-                  radius={DISCOVERY_RADIUS_METERS}
-                  strokeWidth={2}
-                  strokeColor="rgba(55, 95, 58, 0.95)"
-                  fillColor="rgba(87, 166, 91, 0.52)"
-                />
-              );
-            })}
+            {!isTownGrowthMode &&
+              !isMapOverview &&
+              loadedMap?.pois.map((poi) => {
+                const isDiscovered =
+                  discoveredPoiIdSet.has(poi.id);
 
-            {loadedMap?.pois.map((poi) => {
-              const isDiscovered =
-                discoveredPoiIdSet.has(poi.id);
-
-              return (
-                <Marker
-                  key={`marker-${poi.id}`}
-                  coordinate={{
-                    latitude: poi.latitude,
-                    longitude: poi.longitude,
-                  }}
-                  title={poi.name}
-                  description={
-                    isDiscovered
-                      ? '発見済みのポイポイ'
-                      : '未発見のポイポイ'
-                  }
-                  pinColor={
-                    isDiscovered ? '#375F3A' : '#7B827C'
-                  }
-                />
-              );
-            })}
-
-            {currentCoordinates && (
-              <Marker
-                coordinate={{
-                  latitude: currentCoordinates.latitude,
-                  longitude: currentCoordinates.longitude,
-                }}
-                title="現在地"
-                description={
-                  currentCoordinates.accuracy === null
-                    ? undefined
-                    : `GPS精度 約${Math.round(
-                        currentCoordinates.accuracy,
-                      )}m`
-                }
-                pinColor="#208AEF"
-              />
-            )}
+                return (
+                  <Marker
+                    key={`marker-${poi.id}`}
+                    coordinate={{
+                      latitude: poi.latitude,
+                      longitude: poi.longitude,
+                    }}
+                    title={poi.name}
+                    tracksViewChanges={false}
+                    zIndex={isDiscovered ? 2 : 1}
+                    description={
+                      isDiscovered
+                        ? '発見済みのポイポイ'
+                        : '未発見のポイポイ'
+                    }
+                    pinColor={
+                      isDiscovered
+                        ? '#375F3A'
+                        : '#7B827C'
+                    }
+                  />
+                );
+              })}
           </MapView>
         ) : (
           <View style={styles.mapPlaceholder}>
@@ -912,6 +1156,25 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
+
+      {loadedMap && (
+        <View style={styles.modeAction}>
+          <ActionButton
+            label={
+              isTownGrowthMode
+                ? '通常マップへ戻る'
+                : 'まち育てモード'
+            }
+            onPress={() =>
+              setIsTownGrowthMode(
+                (currentMode) => !currentMode,
+              )
+            }
+            secondary={!isTownGrowthMode}
+            compact
+          />
+        </View>
+      )}
 
       <View style={styles.statusBadge}>
         <Text style={styles.statusBadgeText}>
@@ -948,6 +1211,22 @@ export default function HomeScreen() {
           </Text>
         </View>
       </View>
+
+      {isTownGrowthMode && (
+        <View style={styles.areaCard}>
+          <Text style={styles.resultLabel}>
+            育てた緑
+          </Text>
+
+          <Text style={styles.areaValue}>
+            {formattedExpandedArea}
+          </Text>
+
+          <Text style={styles.areaNote}>
+            2m四方のマスで、重なった領域を一度だけ数えています。
+          </Text>
+        </View>
+      )}
 
       <View style={styles.gpsCard}>
         <Text style={styles.gpsStatus}>
@@ -1140,16 +1419,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#697169',
   },
-  discoveryBanner: {
-    marginTop: 12,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#DFF1D8',
+  nearestPoiText: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#DCE3D9',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    color: '#375F3A',
   },
-  discoveryBannerText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#2F6334',
+  modeAction: {
+    width: '68%',
+    alignSelf: 'center',
+    marginTop: 14,
   },
   mapCard: {
     marginTop: 12,
@@ -1256,6 +1539,24 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: '700',
     color: '#243325',
+  },
+  areaCard: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+  },
+  areaValue: {
+    marginTop: 7,
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#375F3A',
+  },
+  areaNote: {
+    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 17,
+    color: '#697169',
   },
   gpsCard: {
     marginTop: 12,
