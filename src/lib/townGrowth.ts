@@ -95,3 +95,120 @@ export function formatAreaSquareMeters(
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ',')} m²`;
 }
+
+export type TownGrowthStage = {
+  id:
+    | 'soil'
+    | 'sprout-field'
+    | 'flower-field'
+    | 'green-square'
+    | 'grove'
+    | 'forest';
+  name: string;
+  description: string;
+  minimumAreaSquareMeters: number;
+  nextStageName: string | null;
+  nextStageAreaSquareMeters: number | null;
+  remainingAreaSquareMeters: number;
+  progressPercentage: number;
+};
+
+const TOWN_GROWTH_STAGES = [
+  {
+    id: 'soil',
+    name: '土づくり',
+    description: 'まだ小さな一歩。ここから緑が芽を出します。',
+    minimumAreaSquareMeters: 0,
+  },
+  {
+    id: 'sprout-field',
+    name: '芽吹きの畑',
+    description: '歩いた場所に、やわらかな芽が広がっています。',
+    minimumAreaSquareMeters: 1000,
+  },
+  {
+    id: 'flower-field',
+    name: '花畑',
+    description: '緑がつながり、街に花の景色が生まれました。',
+    minimumAreaSquareMeters: 3000,
+  },
+  {
+    id: 'green-square',
+    name: '緑の広場',
+    description: 'みんなが集まれるほど、緑が大きく育っています。',
+    minimumAreaSquareMeters: 6000,
+  },
+  {
+    id: 'grove',
+    name: '小さな林',
+    description: '点だった緑が重なり、街の林になりました。',
+    minimumAreaSquareMeters: 10000,
+  },
+  {
+    id: 'forest',
+    name: 'まちの森',
+    description: '歩いた軌跡が、街を包む大きな森になりました。',
+    minimumAreaSquareMeters: 20000,
+  },
+] as const;
+
+export function getTownGrowthStage(
+  areaSquareMeters: number,
+): TownGrowthStage {
+  const safeArea = Math.max(0, areaSquareMeters);
+
+  let currentIndex = 0;
+
+  for (
+    let index = 0;
+    index < TOWN_GROWTH_STAGES.length;
+    index += 1
+  ) {
+    if (
+      safeArea >=
+      TOWN_GROWTH_STAGES[index].minimumAreaSquareMeters
+    ) {
+      currentIndex = index;
+    }
+  }
+
+  const currentStage = TOWN_GROWTH_STAGES[currentIndex];
+  const nextStage =
+    TOWN_GROWTH_STAGES[currentIndex + 1] ?? null;
+
+  if (!nextStage) {
+    return {
+      ...currentStage,
+      nextStageName: null,
+      nextStageAreaSquareMeters: null,
+      remainingAreaSquareMeters: 0,
+      progressPercentage: 100,
+    };
+  }
+
+  const stageRange =
+    nextStage.minimumAreaSquareMeters -
+    currentStage.minimumAreaSquareMeters;
+  const progressWithinStage =
+    safeArea - currentStage.minimumAreaSquareMeters;
+
+  return {
+    ...currentStage,
+    nextStageName: nextStage.name,
+    nextStageAreaSquareMeters:
+      nextStage.minimumAreaSquareMeters,
+    remainingAreaSquareMeters: Math.max(
+      0,
+      nextStage.minimumAreaSquareMeters - safeArea,
+    ),
+    progressPercentage: Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          (progressWithinStage / stageRange) * 100,
+        ),
+      ),
+    ),
+  };
+}
