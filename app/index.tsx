@@ -30,10 +30,10 @@ import {
 } from '../src/lib/storage';
 import {
   calculateUniqueEffectAreaSquareMeters,
-  DEFAULT_EFFECT_RADIUS_METERS,
   formatAreaSquareMeters,
   getTownGrowthStage,
 } from '../src/lib/townGrowth';
+import { createTownGrowthPetalCoordinates } from '../src/lib/townGrowthShape';
 import type {
   Coordinates,
   ParsedMap,
@@ -182,7 +182,6 @@ export default function HomeScreen() {
     [loadedMap],
   );
 
-
   const discoveredCount = discoveredPoiIds.length;
   const totalPoiCount = loadedMap?.pois.length ?? 0;
 
@@ -294,7 +293,6 @@ export default function HomeScreen() {
           savedState.discoveredPoiIds,
         );
       }
-
     } catch (error) {
       console.warn('保存データを復元できませんでした。', error);
     }
@@ -977,7 +975,6 @@ export default function HomeScreen() {
               handleMapRegionChangeComplete
             }
           >
-
             {isTownGrowthMode &&
               areaPoiAssociations.map(
                 ({ area, poiId }) =>
@@ -985,33 +982,31 @@ export default function HomeScreen() {
                     <Polygon
                       key={area.id}
                       coordinates={area.coordinates}
-                      strokeColor="rgba(55, 95, 58, 0.95)"
-                      fillColor="rgba(87, 166, 91, 0.52)"
-                      strokeWidth={2}
+                      strokeColor="rgba(55, 95, 58, 0.82)"
+                      fillColor="rgba(87, 166, 91, 0.34)"
+                      strokeWidth={1.5}
                     />
                   ) : null,
               )}
 
             {isTownGrowthMode &&
               loadedMap?.pois.map((poi) => {
-                const isDiscovered =
-                  discoveredPoiIdSet.has(poi.id);
-
-                if (!isDiscovered) {
+                if (!discoveredPoiIdSet.has(poi.id)) {
                   return null;
                 }
 
                 return (
-                  <Circle
-                    key={`fill-${poi.id}`}
-                    center={{
-                      latitude: poi.latitude,
-                      longitude: poi.longitude,
-                    }}
-                    radius={DEFAULT_EFFECT_RADIUS_METERS}
-                    strokeWidth={2}
-                    strokeColor="rgba(55, 95, 58, 0.95)"
-                    fillColor="rgba(87, 166, 91, 0.52)"
+                  <Polygon
+                    key={`petal-${poi.id}`}
+                    coordinates={
+                      createTownGrowthPetalCoordinates(
+                        poi,
+                        poi.id,
+                      )
+                    }
+                    strokeColor="rgba(61, 121, 68, 0.78)"
+                    fillColor="rgba(116, 190, 113, 0.44)"
+                    strokeWidth={1.5}
                   />
                 );
               })}
@@ -1192,7 +1187,7 @@ export default function HomeScreen() {
           )}
 
           <Text style={styles.areaNote}>
-            緑の重なりは一度だけ数えています。
+            花びらは表示演出です。緑の重なりは一度だけ数えています。
           </Text>
         </View>
       )}
