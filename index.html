@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#375f3a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="まちたん！" />
+  <title>まちたん！ Web確認版</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8f2;
+      --card: #ffffff;
+      --ink: #243325;
+      --muted: #667168;
+      --green: #375f3a;
+      --green-2: #57a65b;
+      --green-soft: #dfeedd;
+      --line: #dfe5dc;
+      --blue: #246399;
+      --shadow: 0 16px 42px rgba(45, 72, 48, .10);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    }
+
+    button, input { font: inherit; }
+
+    body {
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    }
+
+    .shell {
+      width: min(100%, 540px);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 22px 18px 42px;
+    }
+
+    .logo {
+      margin: 8px 0 0;
+      text-align: center;
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -.04em;
+    }
+
+    .subtitle {
+      margin: 4px 0 18px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .web-badge {
+      width: fit-content;
+      margin: 0 auto 16px;
+      padding: 6px 11px;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .card {
+      border: 1px solid rgba(55, 95, 58, .06);
+      border-radius: 22px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .entry-card {
+      padding: 22px;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    .entry-card h2 {
+      margin: 8px 0 8px;
+      font-size: 25px;
+      line-height: 1.35;
+    }
+
+    .entry-card p {
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .code-input {
+      width: 100%;
+      padding: 16px;
+      border: 2px solid var(--line);
+      border-radius: 16px;
+      outline: none;
+      background: #fbfcf8;
+      color: var(--ink);
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: .12em;
+    }
+
+    .code-input:focus { border-color: var(--green-2); }
+
+    .hint {
+      margin-top: 10px;
+      color: #7a837b;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .error {
+      min-height: 20px;
+      margin-top: 8px;
+      color: #b33a35;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .button {
+      width: 100%;
+      min-height: 50px;
+      margin-top: 12px;
+      padding: 13px 16px;
+      border: 2px solid var(--green);
+      border-radius: 17px;
+      cursor: pointer;
+      font-weight: 850;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+
+    .button:active { transform: scale(.985); }
+    .button:disabled { opacity: .45; cursor: default; }
+
+    .primary {
+      color: #fff;
+      background: var(--green);
+    }
+
+    .secondary {
+      color: var(--green);
+      background: transparent;
+    }
+
+    .compact {
+      min-height: 42px;
+      margin-top: 0;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+
+    .hidden { display: none !important; }
+
+    .event-preview {
+      margin-top: 16px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fbfcf8;
+    }
+
+    .event-preview h3 {
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    .event-meta {
+      display: grid;
+      grid-template-columns: 82px 1fr;
+      gap: 8px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .event-meta strong { color: var(--ink); }
+
+    .top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .event-chip {
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .leave-link {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      text-decoration: underline;
+    }
+
+    .progress-card {
+      padding: 16px;
+    }
+
+    .event-name {
+      margin-bottom: 4px;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .progress-text {
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .track {
+      height: 10px;
+      margin-top: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e9e2;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: var(--green-2);
+      transition: width .3s ease;
+    }
+
+    .nearest {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.55;
+    }
+
+    .map-card {
+      margin-top: 12px;
+      padding: 11px;
+    }
+
+    .map-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 2px 10px;
+    }
+
+    .map-title {
+      color: var(--green);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .map-note {
+      color: #7a837b;
+      font-size: 11px;
+    }
+
+    .map-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / .9;
+      overflow: hidden;
+      border-radius: 16px;
+      background:
+        radial-gradient(circle at 18% 25%, rgba(114, 181, 105, .20) 0 15%, transparent 16%),
+        radial-gradient(circle at 72% 72%, rgba(114, 181, 105, .18) 0 18%, transparent 19%),
+        linear-gradient(24deg, transparent 45%, rgba(255,255,255,.85) 46% 52%, transparent 53%),
+        linear-gradient(112deg, transparent 36%, rgba(255,255,255,.78) 37% 43%, transparent 44%),
+        #e7eddf;
+      border: 1px solid #d9e1d3;
+    }
+
+    .map-wrap::before,
+    .map-wrap::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      background: rgba(122, 171, 214, .36);
+      transform: rotate(-18deg);
+    }
+
+    .map-wrap::before {
+      width: 145%;
+      height: 24px;
+      left: -20%;
+      top: 62%;
+    }
+
+    .map-wrap::after {
+      width: 95%;
+      height: 15px;
+      left: 26%;
+      top: 18%;
+      transform: rotate(38deg);
+    }
+
+    #mapSvg {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .map-label {
+      fill: rgba(36, 51, 37, .62);
+      font-size: 3.1px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+
+    .poi {
+      cursor: pointer;
+      transition: opacity .2s ease;
+    }
+
+    .poi-ring {
+      fill: white;
+      stroke-width: .8;
+    }
+
+    .poi-core { stroke: white; stroke-width: .5; }
+
+    .flower {
+      fill: rgba(108, 190, 104, .60);
+      stroke: rgba(55, 95, 58, .80);
+      stroke-width: .55;
+      filter: drop-shadow(0 .8px .7px rgba(55,95,58,.16));
+    }
+
+    .mode-row {
+      width: 72%;
+      margin: 14px auto 0;
+    }
+
+    .status-badge {
+      width: fit-content;
+      margin: 18px auto 0;
+      padding: 7px 18px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .timer-card {
+      margin-top: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .timer-label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .timer {
+      margin-top: 5px;
+      font-variant-numeric: tabular-nums;
+      font-size: 42px;
+      font-weight: 900;
+      letter-spacing: .02em;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .stat-card {
+      padding: 16px;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .stat-value {
+      margin-top: 7px;
+      font-size: 21px;
+      font-weight: 900;
+    }
+
+    .growth-card {
+      margin-top: 12px;
+      padding: 17px;
+    }
+
+    .growth-stage {
+      margin: 4px 0 3px;
+      color: var(--green);
+      font-size: 27px;
+      font-weight: 900;
+    }
+
+    .growth-description {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .growth-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .growth-area {
+      color: var(--green);
+      font-size: 24px;
+      font-weight: 900;
+    }
+
+    .next-text {
+      margin-top: 8px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .controls .wide { grid-column: 1 / -1; }
+
+    .simulation {
+      margin-top: 12px;
+      padding: 15px;
+      border: 1px dashed #b9c9b5;
+      border-radius: 18px;
+      background: rgba(255,255,255,.62);
+    }
+
+    .simulation-title {
+      margin-bottom: 6px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .simulation p {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .footer {
+      margin-top: 18px;
+      color: #7a837b;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    @media (min-width: 760px) {
+      .shell { padding-top: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="logo">まちたん！</div>
+    <div class="subtitle">歩いて見つける、まち探索アプリ</div>
+    <div class="web-badge">Web動作確認版</div>
+
+    <section id="entryScreen" class="card entry-card">
+      <div class="eyebrow">EVENT ENTRY</div>
+      <h2>イベントコードを入力</h2>
+      <p>会長から案内されたコードを入れると、今日のイベントへ参加できます。</p>
+      <input id="eventCode" class="code-input" inputmode="text" autocomplete="off" placeholder="KASAI" maxlength="16" />
+      <div class="hint">テスト用：KASAI または PGCTOKYO</div>
+      <div id="entryError" class="error"></div>
+      <button id="checkEvent" class="button primary">イベントを確認</button>
+
+      <div id="eventPreview" class="event-preview hidden">
+        <h3 id="previewName"></h3>
+        <div class="event-meta">
+          <span>開催場所</span><strong id="previewPlace"></strong>
+          <span>開催時間</span><strong id="previewTime"></strong>
+          <span>ポイポイ</span><strong id="previewPoints"></strong>
+        </div>
+        <button id="joinEvent" class="button primary">このイベントに参加する</button>
+        <button id="cancelPreview" class="button secondary">コードを入力し直す</button>
+      </div>
+    </section>
+
+    <section id="appScreen" class="hidden">
+      <div class="top-row">
+        <div class="event-chip" id="eventChip">イベント参加中</div>
+        <button id="leaveEvent" class="leave-link">イベントを退出</button>
+      </div>
+
+      <section class="card progress-card">
+        <div id="eventName" class="event-name"></div>
+        <div id="progressText" class="progress-text"></div>
+        <div class="track"><div id="progressFill" class="fill"></div></div>
+        <div id="nearestText" class="nearest"></div>
+      </section>
+
+      <section class="card map-card">
+        <div class="map-head">
+          <div id="mapTitle" class="map-title">攻略マップ</div>
+          <div class="map-note">Web版は模擬地図</div>
+        </div>
+        <div class="map-wrap">
+          <svg id="mapSvg" viewBox="0 0 100 90" aria-label="まちたん模擬マップ"></svg>
+        </div>
+      </section>
+
+      <div class="mode-row">
+        <button id="toggleMode" class="button secondary compact">まち育てモード</button>
+      </div>
+
+      <div id="statusBadge" class="status-badge">計測前</div>
+
+      <section class="card timer-card">
+        <div class="timer-label">経過時間</div>
+        <div id="timer" class="timer">00:00:00</div>
+      </section>
+
+      <div class="stats">
+        <section class="card stat-card">
+          <div class="stat-label">歩行距離</div>
+          <div id="distanceValue" class="stat-value">0 m</div>
+        </section>
+        <section class="card stat-card">
+          <div class="stat-label">ポイポイ発見数</div>
+          <div id="discoveredValue" class="stat-value">0</div>
+        </section>
+      </div>
+
+      <section id="growthCard" class="card growth-card hidden">
+        <div class="eyebrow">現在のまち</div>
+        <div id="growthStage" class="growth-stage">土づくり</div>
+        <div id="growthDescription" class="growth-description"></div>
+        <div class="growth-row">
+          <div class="stat-label">育てた緑</div>
+          <div id="growthArea" class="growth-area">0 m²</div>
+        </div>
+        <div class="track"><div id="growthFill" class="fill"></div></div>
+        <div id="growthNext" class="next-text"></div>
+      </section>
+
+      <div class="controls">
+        <button id="startButton" class="button primary wide">計測を開始</button>
+        <button id="pauseButton" class="button secondary hidden">一時停止</button>
+        <button id="finishButton" class="button secondary hidden">計測を終了</button>
+        <button id="resumeButton" class="button primary hidden">計測を再開</button>
+        <button id="newMeasurementButton" class="button primary wide hidden">新しい計測を始める</button>
+      </div>
+
+      <section class="simulation">
+        <div class="simulation-title">Web確認用シミュレーション</div>
+        <p>本物のGPSの代わりに、ボタンで歩行とポイポイ発見を進めます。</p>
+        <button id="simulateWalk" class="button primary compact" disabled>約80m歩いて次のポイポイを発見</button>
+        <button id="resetProgress" class="button secondary compact" style="margin-top:10px">攻略状況をリセット</button>
+      </section>
+
+      <div class="footer">このページは画面と操作導線の確認用です。実機版ではGPS・KMZ・Apple Mapsを使用します。</div>
+    </section>
+  </main>
+
+  <script>
+    const EVENTS = {
+      KASAI: {
+        code: 'KASAI',
+        name: '葛西臨海公園 まちたん！テスト',
+        place: '葛西臨海公園',
+        time: '10:00〜17:00',
+        pointCount: 12,
+      },
+      PGCTOKYO: {
+        code: 'PGCTOKYO',
+        name: 'PGC TOKYO まち探索',
+        place: '上野・秋葉原エリア',
+        time: '11:00〜16:00',
+        pointCount: 10,
+      },
+    };
+
+    const POINTS = [
+      { x: 15, y: 17, name: '海辺の入口' },
+      { x: 31, y: 13, name: '並木道' },
+      { x: 49, y: 21, name: '展望広場' },
+      { x: 70, y: 15, name: '芝生の丘' },
+      { x: 84, y: 29, name: '水辺デッキ' },
+      { x: 66, y: 38, name: '中央園路' },
+      { x: 44, y: 42, name: '森の入口' },
+      { x: 22, y: 37, name: '休憩広場' },
+      { x: 13, y: 58, name: '花壇前' },
+      { x: 35, y: 63, name: '橋のたもと' },
+      { x: 60, y: 60, name: '池の南側' },
+      { x: 80, y: 69, name: 'ゴール広場' },
+    ];
+
+    const STAGES = [
+      { min: 0, name: '土づくり', desc: 'まだ小さな一歩。ここから緑が芽を出します。' },
+      { min: 1000, name: '芽吹きの畑', desc: '歩いた場所に、やわらかな芽が広がっています。' },
+      { min: 3000, name: '花畑', desc: '緑がつながり、街に花の景色が生まれました。' },
+      { min: 6000, name: '緑の広場', desc: 'みんなが集まれるほど、緑が大きく育っています。' },
+      { min: 10000, name: '小さな林', desc: '点だった緑が重なり、街の林になりました。' },
+      { min: 20000, name: 'まちの森', desc: '歩いた軌跡が、街を包む大きな森になりました。' },
+    ];
+
+    const els = Object.fromEntries([
+      'entryScreen','eventCode','entryError','checkEvent','eventPreview','previewName','previewPlace','previewTime','previewPoints','joinEvent','cancelPreview',
+      'appScreen','eventChip','leaveEvent','eventName','progressText','progressFill','nearestText','mapTitle','mapSvg','toggleMode','statusBadge','timer','distanceValue','discoveredValue',
+      'growthCard','growthStage','growthDescription','growthArea','growthFill','growthNext','startButton','pauseButton','finishButton','resumeButton','newMeasurementButton','simulateWalk','resetProgress'
+    ].map(id => [id, document.getElementById(id)]));
+
+    let currentEvent = null;
+    let discovered = 0;
+    let distanceMeters = 0;
+    let status = 'idle';
+    let growthMode = false;
+    let startedAt = 0;
+    let accumulatedMs = 0;
+    let timerHandle = null;
+
+    function totalPoints() {
+      return Math.min(currentEvent?.pointCount || 0, POINTS.length);
+    }
+
+    function normalizeCode(value) {
+      return value.trim().toUpperCase().replace(/\s+/g, '');
+    }
+
+    function checkCode() {
+      const code = normalizeCode(els.eventCode.value);
+      const event = EVENTS[code];
+      els.entryError.textContent = '';
+
+      if (!event) {
+        els.eventPreview.classList.add('hidden');
+        els.entryError.textContent = 'イベントコードが見つかりません。';
+        return;
+      }
+
+      currentEvent = event;
+      els.previewName.textContent = event.name;
+      els.previewPlace.textContent = event.place;
+      els.previewTime.textContent = event.time;
+      els.previewPoints.textContent = `${event.pointCount}件`;
+      els.eventPreview.classList.remove('hidden');
+    }
+
+    function joinEvent() {
+      if (!currentEvent) return;
+      resetMeasurement(false);
+      discovered = Number(localStorage.getItem(`machitan-web-${currentEvent.code}-discovered`) || 0);
+      distanceMeters = Number(localStorage.getItem(`machitan-web-${currentEvent.code}-distance`) || 0);
+      els.entryScreen.classList.add('hidden');
+      els.appScreen.classList.remove('hidden');
+      els.eventName.textContent = currentEvent.name;
+      els.eventChip.textContent = currentEvent.code;
+      renderAll();
+    }
+
+    function leaveEvent() {
+      stopTimer();
+      currentEvent = null;
+      els.appScreen.classList.add('hidden');
+      els.entryScreen.classList.remove('hidden');
+      els.eventPreview.classList.add('hidden');
+      els.eventCode.value = '';
+    }
+
+    function startMeasurement() {
+      if (status === 'finished') resetMeasurement(false);
+      status = 'running';
+      startedAt = Date.now();
+      startTimer();
+      renderControls();
+    }
+
+    function pauseMeasurement() {
+      if (status !== 'running') return;
+      accumulatedMs += Date.now() - startedAt;
+      startedAt = 0;
+      status = 'paused';
+      stopTimer();
+      renderControls();
+      renderTimer();
+    }
+
+    function resumeMeasurement() {
+      if (status !== 'paused') return;
+      status = 'running';
+      startedAt = Date.now();
+      startTimer();
+      renderControls();
+    }
+
+    function finishMeasurement() {
+      if (status === 'running') {
+        accumulatedMs += Date.now() - startedAt;
+      }
+      startedAt = 0;
+      status = 'finished';
+      stopTimer();
+      renderControls();
+      renderTimer();
+    }
+
+    function resetMeasurement(clearProgress = false) {
+      stopTimer();
+      status = 'idle';
+      startedAt = 0;
+      accumulatedMs = 0;
+      if (clearProgress) {
+        discovered = 0;
+        distanceMeters = 0;
+        if (currentEvent) {
+          localStorage.removeItem(`machitan-web-${currentEvent.code}-discovered`);
+          localStorage.removeItem(`machitan-web-${currentEvent.code}-distance`);
+        }
+      }
+      renderAll();
+    }
+
+    function startTimer() {
+      stopTimer();
+      timerHandle = setInterval(renderTimer, 250);
+    }
+
+    function stopTimer() {
+      if (timerHandle) clearInterval(timerHandle);
+      timerHandle = null;
+    }
+
+    function elapsedMs() {
+      return accumulatedMs + (status === 'running' ? Date.now() - startedAt : 0);
+    }
+
+    function formatTime(ms) {
+      const total = Math.floor(ms / 1000);
+      const h = String(Math.floor(total / 3600)).padStart(2, '0');
+      const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+      const s = String(total % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    function renderTimer() {
+      els.timer.textContent = formatTime(elapsedMs());
+    }
+
+    function simulateWalk() {
+      if (status !== 'running' || discovered >= totalPoints()) return;
+      distanceMeters += 80 + (discovered % 3) * 12;
+      discovered += 1;
+      localStorage.setItem(`machitan-web-${currentEvent.code}-discovered`, discovered);
+      localStorage.setItem(`machitan-web-${currentEvent.code}-distance`, distanceMeters);
+      renderAll();
+    }
+
+    function petalPath(cx, cy, seed) {
+      const points = [];
+      const count = 60;
+      const rotation = (seed % 5) * 0.18;
+      for (let i = 0; i < count; i++) {
+        const a = rotation + i / count * Math.PI * 2;
+        const wave = (1 + Math.cos(5 * (a - rotation))) / 2;
+        const r = 4.2 + 3.2 * Math.pow(wave, .72);
+        points.push([cx + Math.sin(a) * r, cy - Math.cos(a) * r]);
+      }
+      return 'M ' + points.map(p => p.map(v => v.toFixed(2)).join(' ')).join(' L ') + ' Z';
+    }
+
+    function renderMap() {
+      const count = totalPoints();
+      let html = `
+        <text x="7" y="84" class="map-label">まちたん！模擬エリア</text>
+      `;
+
+      POINTS.slice(0, count).forEach((p, index) => {
+        const isFound = index < discovered;
+        if (growthMode) {
+          if (isFound) {
+            html += `<path class="flower" d="${petalPath(p.x, p.y, index)}" />`;
+          }
+        } else {
+          const stroke = isFound ? '#375f3a' : '#7b827c';
+          const fill = isFound ? '#57a65b' : '#8f9690';
+          html += `
+            <g class="poi" data-index="${index}">
+              <circle class="poi-ring" cx="${p.x}" cy="${p.y}" r="3.1" stroke="${stroke}" />
+              <circle class="poi-core" cx="${p.x}" cy="${p.y}" r="1.8" fill="${fill}" />
+              <text x="${p.x + 3.6}" y="${p.y + 1}" class="map-label">${p.name}</text>
+            </g>`;
+        }
+      });
+
+      els.mapSvg.innerHTML = html;
+    }
+
+    function growthAreaValue() {
+      return discovered * 2827;
+    }
+
+    function currentStage(area) {
+      let index = 0;
+      STAGES.forEach((stage, i) => { if (area >= stage.min) index = i; });
+      return { index, stage: STAGES[index], next: STAGES[index + 1] || null };
+    }
+
+    function formatArea(area) {
+      return area >= 1000 ? `${(area / 10000).toFixed(2)} ha` : `${area.toLocaleString()} m²`;
+    }
+
+    function renderGrowth() {
+      const area = growthAreaValue();
+      const { stage, next } = currentStage(area);
+      els.growthStage.textContent = stage.name;
+      els.growthDescription.textContent = stage.desc;
+      els.growthArea.textContent = formatArea(area);
+
+      if (next) {
+        const range = next.min - stage.min;
+        const progress = Math.max(0, Math.min(100, ((area - stage.min) / range) * 100));
+        els.growthFill.style.width = `${progress}%`;
+        els.growthNext.textContent = `次は「${next.name}」まで あと${formatArea(Math.max(0, next.min - area))}`;
+      } else {
+        els.growthFill.style.width = '100%';
+        els.growthNext.textContent = '最高ステージまで育ちました';
+      }
+    }
+
+    function renderProgress() {
+      const total = totalPoints();
+      const percent = total ? Math.round(discovered / total * 100) : 0;
+      els.progressText.textContent = `${discovered} / ${total} 発見  (${percent}%)`;
+      els.progressFill.style.width = `${percent}%`;
+      els.discoveredValue.textContent = discovered;
+      els.distanceValue.textContent = distanceMeters >= 1000 ? `${(distanceMeters / 1000).toFixed(2)} km` : `${distanceMeters} m`;
+
+      if (discovered >= total) {
+        els.nearestText.textContent = 'すべてのポイポイを発見しました';
+      } else {
+        const p = POINTS[discovered];
+        els.nearestText.textContent = `最寄りの未発見：${p.name}　あと約${Math.max(12, 74 - discovered * 3)}m`;
+      }
+    }
+
+    function renderControls() {
+      const states = ['startButton','pauseButton','finishButton','resumeButton','newMeasurementButton'];
+      states.forEach(id => els[id].classList.add('hidden'));
+
+      if (status === 'idle') els.startButton.classList.remove('hidden');
+      if (status === 'running') {
+        els.pauseButton.classList.remove('hidden');
+        els.finishButton.classList.remove('hidden');
+      }
+      if (status === 'paused') {
+        els.resumeButton.classList.remove('hidden');
+        els.finishButton.classList.remove('hidden');
+      }
+      if (status === 'finished') els.newMeasurementButton.classList.remove('hidden');
+
+      const labels = { idle: '計測前', running: '計測中', paused: '一時停止中', finished: '計測終了' };
+      els.statusBadge.textContent = labels[status];
+      els.simulateWalk.disabled = status !== 'running' || discovered >= totalPoints();
+    }
+
+    function renderMode() {
+      els.mapTitle.textContent = growthMode ? 'まち育てマップ' : '攻略マップ';
+      els.toggleMode.textContent = growthMode ? '通常マップへ戻る' : 'まち育てモード';
+      els.growthCard.classList.toggle('hidden', !growthMode);
+      els.toggleMode.classList.toggle('primary', growthMode);
+      els.toggleMode.classList.toggle('secondary', !growthMode);
+    }
+
+    function renderAll() {
+      if (!currentEvent) return;
+      renderProgress();
+      renderMap();
+      renderGrowth();
+      renderMode();
+      renderControls();
+      renderTimer();
+    }
+
+    els.eventCode.addEventListener('input', () => {
+      els.eventCode.value = normalizeCode(els.eventCode.value);
+      els.entryError.textContent = '';
+    });
+    els.eventCode.addEventListener('keydown', e => { if (e.key === 'Enter') checkCode(); });
+    els.checkEvent.addEventListener('click', checkCode);
+    els.joinEvent.addEventListener('click', joinEvent);
+    els.cancelPreview.addEventListener('click', () => {
+      currentEvent = null;
+      els.eventPreview.classList.add('hidden');
+      els.eventCode.focus();
+    });
+    els.leaveEvent.addEventListener('click', leaveEvent);
+    els.toggleMode.addEventListener('click', () => { growthMode = !growthMode; renderAll(); });
+    els.startButton.addEventListener('click', startMeasurement);
+    els.pauseButton.addEventListener('click', pauseMeasurement);
+    els.resumeButton.addEventListener('click', resumeMeasurement);
+    els.finishButton.addEventListener('click', finishMeasurement);
+    els.newMeasurementButton.addEventListener('click', () => resetMeasurement(false));
+    els.simulateWalk.addEventListener('click', simulateWalk);
+    els.resetProgress.addEventListener('click', () => resetMeasurement(true));
+  </script>
+</body>
+</html>
