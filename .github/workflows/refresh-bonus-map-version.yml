@@ -1,0 +1,51 @@
+name: Refresh bonus map version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/refresh-bonus-map-version.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Force Safari to load the latest bonus map
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          for filename in ['index.html', 'bonus-map-preview.html']:
+              path = Path(filename)
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding='utf-8')
+              text = text.replace(
+                  './bonus-map.js?v=20260806-2205',
+                  './bonus-map.js?v=20260806-2249'
+              )
+              text = text.replace(
+                  './bonus-map.js"></script>',
+                  './bonus-map.js?v=20260806-2249"></script>'
+              )
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit cache refresh
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html bonus-map-preview.html
+          git commit -m "飛び地地図の面積表示キャッシュを更新"
+          git push origin main
