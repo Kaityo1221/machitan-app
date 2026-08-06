@@ -1,0 +1,77 @@
+name: Attach native result screen
+
+on:
+  push:
+    branches:
+      - feature/event-entry-prototype
+    paths:
+      - .github/workflows/attach-native-result-screen.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/event-entry-prototype
+
+      - name: Connect result screen to measurement flow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/index.tsx')
+          text = path.read_text(encoding='utf-8')
+
+          import_marker = "import { createTownGrowthPetalCoordinates } from '../src/lib/townGrowthShape';"
+          result_import = "import { MeasurementResultScreen } from '../src/components/MeasurementResultScreen';"
+
+          if result_import not in text:
+              text = text.replace(
+                  import_marker,
+                  result_import + "\n" + import_marker,
+              )
+
+          return_marker = "  return (\n    <ScrollView"
+          result_block = """  if (status === 'finished') {
+    return (
+      <MeasurementResultScreen
+        elapsedTime={formattedElapsedTime}
+        distance={formattedDistance}
+        discoveredCount={discoveredCount}
+        totalPoiCount={totalPoiCount}
+        completionPercentage={completionPercentage}
+        expandedArea={formattedExpandedArea}
+        stageName={townGrowthStage.name}
+        stageDescription={townGrowthStage.description}
+        loadedMap={loadedMap}
+        discoveredPoiIds={discoveredPoiIds}
+        onStartNewMeasurement={handleResetMeasurement}
+      />
+    );
+  }
+
+  return (
+    <ScrollView"""
+
+          if "<MeasurementResultScreen" not in text:
+              text = text.replace(return_marker, result_block)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit result screen connection
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/index.tsx
+          git commit -m "計測終了後に実機版結果画面を表示"
+          git push origin feature/event-entry-prototype
