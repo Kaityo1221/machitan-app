@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>飛び地ボーナス試着室</title>
+<style>
+:root{--bg:#f7f8f2;--card:#fff;--ink:#243325;--muted:#6b756d;--gold:#9a6810;--line:#e7dcc3;--shadow:0 16px 42px rgba(62,74,52,.11)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{width:min(100%,520px);margin:auto;padding:24px 18px 40px}h1{margin:0;text-align:center;font-size:30px}.sub{text-align:center;color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0 18px}.card{position:relative;overflow:hidden;padding:20px;border-radius:24px;background:linear-gradient(145deg,#fffaf0,#fff);box-shadow:var(--shadow);border:1px solid rgba(154,104,16,.08)}.card:before{content:"";position:absolute;width:180px;height:180px;border-radius:50%;right:-75px;top:-85px;background:radial-gradient(circle,#f6d98f 0 22%,rgba(246,217,143,.22) 23% 62%,transparent 63%)}.kicker{position:relative;color:var(--gold);font-size:12px;font-weight:900;letter-spacing:.08em}.row{position:relative;display:grid;grid-template-columns:100px 1fr;gap:16px;align-items:center;margin-top:14px}.globe{width:100px;height:100px;border-radius:50%;position:relative;background:radial-gradient(circle at 33% 28%,#bde1ff 0 18%,#72b0e5 19% 59%,#387bb8 60%);box-shadow:inset -12px -10px 20px rgba(20,72,117,.22),0 10px 22px rgba(34,91,139,.18)}.globe:before,.globe:after{content:"";position:absolute;background:#7bc77a;border-radius:55% 45% 60% 40%}.globe:before{width:38px;height:23px;left:15px;top:23px;transform:rotate(-16deg)}.globe:after{width:30px;height:19px;right:14px;bottom:22px;transform:rotate(19deg)}.pin{position:absolute;z-index:2;left:50%;top:42%;width:20px;height:20px;border-radius:50% 50% 50% 0;background:#e0564a;transform:translate(-50%,-50%) rotate(-45deg);box-shadow:0 3px 8px rgba(102,35,28,.25)}.pin:after{content:"";position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;left:7px;top:7px}.place{font-size:24px;font-weight:900;color:#6e4b0d}.comment{margin-top:6px;color:#665b49;font-size:13px;line-height:1.65}.category{position:relative;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);color:#8a7b63;font-size:12px}.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.btn{min-height:48px;border:2px solid #6e4b0d;border-radius:16px;font-weight:850;background:#6e4b0d;color:#fff}.btn.secondary{background:transparent;color:#6e4b0d}.back{display:block;margin-top:16px;text-align:center;color:#56605a;font-size:13px}.note{margin-top:14px;color:var(--muted);font-size:11px;line-height:1.6;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>飛び地ボーナス試着室</h1>
+<div class="sub">本番の固定抽選は変えず、見た目と文章だけを順番に確認するWeb専用ページです。</div>
+<section class="card">
+<div class="kicker">飛び地ボーナス</div>
+<div class="row"><div class="globe"><span class="pin"></span></div><div><div id="place" class="place"></div><div id="comment" class="comment"></div></div></div>
+<div id="category" class="category"></div>
+</section>
+<div class="controls"><button id="prev" class="btn secondary">前を見る</button><button id="next" class="btn">次を見る</button></div>
+<a class="back" href="./">まちたん！Web確認版へ戻る</a>
+<div class="note">実際のイベントでは、同じイベントコードの参加者全員に同じ結果が表示されます。</div>
+</main>
+<script>
+const comments=['今日の歩幅が、なぜか{place}まで届きました。','念のため確認しましたが、{place}も少し育っています。','地図係が勢い余って{place}にも印をつけました。','本日の遠征先は、本人たちも知らない{place}です。','歩いた方向とは無関係に、{place}が選ばれました。','まちたん！本部より、{place}にも小さな緑をお届けしました。','攻略の余韻が、海を越えて{place}へ着地しました。','本日の一歩、最終的に{place}で発見されました。'];
+const groups=[
+{label:'都道府県枠',items:['佐賀県','福井県','鳥取県','徳島県','秋田県','山梨県']},
+{label:'小さい国・聞き慣れない国枠',items:['サンマリノ','リヒテンシュタイン','アンドラ','ツバル','ナウル','パラオ']},
+{label:'一般的な国枠',items:['アイスランド','ポルトガル','ニュージーランド','モロッコ','フィンランド','チリ']},
+{label:'大当たり枠',items:['アメリカ合衆国','カナダ']}
+];
+const samples=[];groups.forEach((g,gi)=>g.items.forEach((name,i)=>samples.push({label:g.label,name,comment:comments[(gi*3+i)%comments.length].replace('{place}',name)})));
+let index=0;const place=document.getElementById('place'),comment=document.getElementById('comment'),category=document.getElementById('category');
+function render(){const item=samples[index];place.textContent=item.name;comment.textContent=item.comment;category.textContent=`${item.label}　${index+1} / ${samples.length}`}
+document.getElementById('next').onclick=()=>{index=(index+1)%samples.length;render()};document.getElementById('prev').onclick=()=>{index=(index-1+samples.length)%samples.length;render()};render();
+</script>
+</body>
+</html>
