@@ -44,7 +44,7 @@ function returnToApp(){}
 const select=document.getElementById('placeSelect');TEST_PLACES.forEach((item,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=item.place.name;select.appendChild(option)});
 select.addEventListener('change',()=>{selectedIndex=Number(select.value)});
 </script>
-<script src="./bonus-map.js"></script>
+<script src="./bonus-map.js?v=20260806-2249"></script>
 <script>
 document.getElementById('showButton').addEventListener('click',()=>{showResult()});showResult();
 </script>
