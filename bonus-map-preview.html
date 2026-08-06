@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#375f3a" />
+<title>飛び地ボーナス 地図テスト</title>
+<style>
+:root{--bg:#f7f8f2;--card:#fff;--ink:#243325;--muted:#6b756d;--green:#375f3a;--soft:#e1eddd;--gold:#9a6810;--shadow:0 14px 40px rgba(45,72,48,.1)}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif}button,select{font:inherit}body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{width:min(100%,540px);margin:auto;padding:24px 18px 120px}.logo{text-align:center;font-size:34px;font-weight:900}.sub{text-align:center;color:var(--muted);font-size:13px;margin:5px 0 17px}.badge{width:max-content;margin:0 auto 16px;padding:6px 11px;border-radius:999px;background:var(--soft);color:var(--green);font-size:12px;font-weight:850}.card{background:var(--card);border-radius:22px;box-shadow:var(--shadow);border:1px solid rgba(55,95,58,.06)}
+.result{padding:24px;text-align:center}.kicker{color:var(--green);font-size:12px;font-weight:900;letter-spacing:.08em}.title{margin-top:8px;font-size:29px;font-weight:900}.desc{margin-top:6px;color:var(--muted);font-size:14px;line-height:1.6}.flower{width:104px;height:104px;margin:18px auto 8px;display:grid;place-items:center}.stage{color:var(--green);font-size:25px;font-weight:900}.event{margin-top:6px;color:var(--muted);font-size:13px}
+.bonus{position:relative;overflow:hidden;margin-top:12px;padding:18px;background:linear-gradient(145deg,#fffaf0,#fff)}.bonus:before{content:"";position:absolute;width:170px;height:170px;border-radius:50%;right:-65px;top:-75px;background:radial-gradient(circle,#f6d98f 0 22%,rgba(246,217,143,.22) 23% 62%,transparent 63%)}.bonus-kicker{position:relative;color:var(--gold);font-size:12px;font-weight:900;letter-spacing:.08em}.bonus-name{position:relative;margin-top:12px;color:#6e4b0d;font-size:27px;font-weight:900}.bonus-comment{position:relative;margin-top:6px;color:#665b49;font-size:14px;line-height:1.65}.bonus-note{position:relative;margin-top:12px;padding-top:10px;border-top:1px solid rgba(154,104,16,.18);color:#8a7b63;font-size:11px;line-height:1.55}
+.test{margin-top:12px;padding:17px}.test-title{color:var(--green);font-size:14px;font-weight:900}.test p{color:var(--muted);font-size:12px;line-height:1.6}.select{width:100%;min-height:50px;padding:10px 13px;border:2px solid #d9e1d5;border-radius:16px;background:#fff;color:var(--ink)}.btn{width:100%;min-height:50px;margin-top:11px;border:2px solid var(--green);border-radius:16px;background:var(--green);color:#fff;font-weight:850}.back{display:block;margin-top:17px;text-align:center;color:var(--green);font-size:13px}.hint{margin-top:13px;text-align:center;color:var(--muted);font-size:11px;line-height:1.6}
+</style>
+</head>
+<body>
+<main>
+<div class="logo">まちたん！</div><div class="sub">飛び地ボーナス 地図動作確認</div><div class="badge">Webテスト版</div>
+<section id="resultScreen">
+<section class="card result"><div class="kicker">EVENT RESULT</div><div class="title">おつかれさまでした</div><div class="desc">今日歩いたぶんだけ、まちに新しい緑が咲きました。</div><div class="flower"><svg viewBox="0 0 100 100"><path d="M50 10 C57 27 60 29 78 22 C68 38 68 42 85 53 C65 55 62 58 66 79 C52 65 48 65 34 79 C38 58 35 55 15 53 C32 42 32 38 22 22 C40 29 43 27 50 10Z" fill="rgba(108,190,104,.68)" stroke="#375f3a" stroke-width="2"/></svg></div><div class="stage">花畑</div><div class="event">葛西臨海公園 まちたん！テスト</div></section>
+<section class="card bonus"><div class="bonus-kicker">飛び地ボーナス</div><div id="bonusPlace" class="bonus-name"></div><div id="bonusComment" class="bonus-comment"></div><div class="bonus-note">右下の「当たった土地はここ」をタップすると、塗りつぶし地図を拡大できます。</div></section>
+<section class="card test"><div class="test-title">土地を切り替えてテスト</div><p>小さな県、小さな国、大きな国でズーム具合を確認できます。</p><select id="placeSelect" class="select"></select><button id="showButton" class="btn">この土地で結果を表示</button></section>
+<a class="back" href="./">まちたん！Web確認版へ戻る</a><div class="hint">境界地図の初回表示には数秒かかる場合があります。2回目以降は端末内のキャッシュを使います。</div>
+</section>
+</main>
+<script>
+const TEST_PLACES=[
+{category:'prefecture',place:{name:'佐賀県',lat:33.2494,lng:130.2988},comment:'今日の歩幅が、なぜか佐賀県まで届きました。'},
+{category:'prefecture',place:{name:'福井県',lat:36.0652,lng:136.2216},comment:'地図係が勢い余って福井県にも印をつけました。'},
+{category:'prefecture',place:{name:'鳥取県',lat:35.5039,lng:134.2377},comment:'念のため確認しましたが、鳥取県も少し育っています。'},
+{category:'small',place:{name:'サンマリノ',lat:43.9424,lng:12.4578},comment:'攻略の余韻が、海を越えてサンマリノへ着地しました。'},
+{category:'small',place:{name:'リヒテンシュタイン',lat:47.166,lng:9.5554},comment:'本日の一歩、最終的にリヒテンシュタインで発見されました。'},
+{category:'general',place:{name:'アイスランド',lat:64.9631,lng:-19.0208},comment:'歩いた方向とは無関係に、アイスランドが選ばれました。'},
+{category:'general',place:{name:'ニュージーランド',lat:-40.9006,lng:174.886},comment:'本日の遠征先は、本人たちも知らないニュージーランドです。'},
+{category:'jackpot',place:{name:'アメリカ合衆国',lat:39.8283,lng:-98.5795},comment:'まちたん！本部より、アメリカ合衆国にも小さな緑をお届けしました。'},
+{category:'jackpot',place:{name:'カナダ',lat:56.1304,lng:-106.3468},comment:'今日の歩幅が、なぜかカナダまで届きました。'}
+];
+var currentEvent={code:'MAPTEST'};
+var selectedIndex=0;
+function getBonusResult(){return TEST_PLACES[selectedIndex]}
+function showResult(){const bonus=getBonusResult();document.getElementById('bonusPlace').textContent=bonus.place.name;document.getElementById('bonusComment').textContent=bonus.comment}
+function returnToApp(){}
+const select=document.getElementById('placeSelect');TEST_PLACES.forEach((item,index)=>{const option=document.createElement('option');option.value=String(index);option.textContent=item.place.name;select.appendChild(option)});
+select.addEventListener('change',()=>{selectedIndex=Number(select.value)});
+</script>
+<script src="./bonus-map.js"></script>
+<script>
+document.getElementById('showButton').addEventListener('click',()=>{showResult()});showResult();
+</script>
+</body>
+</html>
