@@ -24,14 +24,13 @@ main{width:min(100%,520px);margin:auto;padding:24px 18px 40px}h1{margin:0;text-a
 <div class="note">実際のイベントでは、同じイベントコードの参加者全員に同じ結果が表示されます。</div>
 </main>
 <script>
-const comments=['今日の歩幅が、なぜか{place}まで届きました。','念のため確認しましたが、{place}も少し育っています。','地図係が勢い余って{place}にも印をつけました。','本日の遠征先は、本人たちも知らない{place}です。','歩いた方向とは無関係に、{place}が選ばれました。','まちたん！本部より、{place}にも小さな緑をお届けしました。','攻略の余韻が、海を越えて{place}へ着地しました。','本日の一歩、最終的に{place}で発見されました。'];
 const groups=[
 {label:'都道府県枠',items:['佐賀県','福井県','鳥取県','徳島県','秋田県','山梨県']},
 {label:'小さい国・聞き慣れない国枠',items:['サンマリノ','リヒテンシュタイン','アンドラ','ツバル','ナウル','パラオ']},
 {label:'一般的な国枠',items:['アイスランド','ポルトガル','ニュージーランド','モロッコ','フィンランド','チリ']},
 {label:'大当たり枠',items:['アメリカ合衆国','カナダ']}
 ];
-const samples=[];groups.forEach((g,gi)=>g.items.forEach((name,i)=>samples.push({label:g.label,name,comment:comments[(gi*3+i)%comments.length].replace('{place}',name)})));
+const samples=[];groups.forEach(g=>g.items.forEach(name=>samples.push({label:g.label,name,comment:`あなたの想いに${name}の住民が賛同しました。`})));
 let index=0;const place=document.getElementById('place'),comment=document.getElementById('comment'),category=document.getElementById('category');
 function render(){const item=samples[index];place.textContent=item.name;comment.textContent=item.comment;category.textContent=`${item.label}　${index+1} / ${samples.length}`}
 document.getElementById('next').onclick=()=>{index=(index+1)%samples.length;render()};document.getElementById('prev').onclick=()=>{index=(index-1+samples.length)%samples.length;render()};render();
