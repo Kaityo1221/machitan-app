@@ -80,3 +80,5 @@ jobs:
           git add app/index.tsx
           git commit -m "計測終了後に実機版結果画面を表示"
           git push origin HEAD:feature/event-entry-prototype
+
+# retrigger: 2026-08-07
