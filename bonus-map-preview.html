@@ -26,16 +26,16 @@ main{width:min(100%,540px);margin:auto;padding:24px 18px 120px}.logo{text-align:
 </main>
 <script>
 const TEST_PLACES=[
-{category:'prefecture',place:{name:'佐賀県',lat:33.2494,lng:130.2988},comment:'今日の歩幅が、なぜか佐賀県まで届きました。'},
-{category:'prefecture',place:{name:'福井県',lat:36.0652,lng:136.2216},comment:'地図係が勢い余って福井県にも印をつけました。'},
-{category:'prefecture',place:{name:'鳥取県',lat:35.5039,lng:134.2377},comment:'念のため確認しましたが、鳥取県も少し育っています。'},
-{category:'small',place:{name:'サンマリノ',lat:43.9424,lng:12.4578},comment:'攻略の余韻が、海を越えてサンマリノへ着地しました。'},
-{category:'small',place:{name:'リヒテンシュタイン',lat:47.166,lng:9.5554},comment:'本日の一歩、最終的にリヒテンシュタインで発見されました。'},
-{category:'general',place:{name:'アイスランド',lat:64.9631,lng:-19.0208},comment:'歩いた方向とは無関係に、アイスランドが選ばれました。'},
-{category:'general',place:{name:'ニュージーランド',lat:-40.9006,lng:174.886},comment:'本日の遠征先は、本人たちも知らないニュージーランドです。'},
-{category:'jackpot',place:{name:'アメリカ合衆国',lat:39.8283,lng:-98.5795},comment:'まちたん！本部より、アメリカ合衆国にも小さな緑をお届けしました。'},
-{category:'jackpot',place:{name:'カナダ',lat:56.1304,lng:-106.3468},comment:'今日の歩幅が、なぜかカナダまで届きました。'}
-];
+{category:'prefecture',place:{name:'佐賀県',lat:33.2494,lng:130.2988}},
+{category:'prefecture',place:{name:'福井県',lat:36.0652,lng:136.2216}},
+{category:'prefecture',place:{name:'鳥取県',lat:35.5039,lng:134.2377}},
+{category:'small',place:{name:'サンマリノ',lat:43.9424,lng:12.4578}},
+{category:'small',place:{name:'リヒテンシュタイン',lat:47.166,lng:9.5554}},
+{category:'general',place:{name:'アイスランド',lat:64.9631,lng:-19.0208}},
+{category:'general',place:{name:'ニュージーランド',lat:-40.9006,lng:174.886}},
+{category:'jackpot',place:{name:'アメリカ合衆国',lat:39.8283,lng:-98.5795}},
+{category:'jackpot',place:{name:'カナダ',lat:56.1304,lng:-106.3468}}
+].map(item=>({...item,comment:`あなたの想いに${item.place.name}の住民が賛同しました。`}));
 var currentEvent={code:'MAPTEST'};
 var selectedIndex=0;
 function getBonusResult(){return TEST_PLACES[selectedIndex]}
