@@ -17,6 +17,7 @@ import MapView, {
   Polygon,
 } from 'react-native-maps';
 
+import { MeasurementResultScreen } from '../src/components/MeasurementResultScreen';
 import {
   associateAreasWithPois,
   calculateDistanceMeters,
@@ -856,6 +857,24 @@ export default function HomeScreen() {
     finished: '計測終了',
   }[status];
 
+  if (status === 'finished') {
+    return (
+      <MeasurementResultScreen
+        elapsedTime={formattedElapsedTime}
+        distance={formattedDistance}
+        discoveredCount={discoveredCount}
+        totalPoiCount={totalPoiCount}
+        completionPercentage={completionPercentage}
+        expandedArea={formattedExpandedArea}
+        stageName={townGrowthStage.name}
+        stageDescription={townGrowthStage.description}
+        loadedMap={loadedMap}
+        discoveredPoiIds={discoveredPoiIds}
+        onStartNewMeasurement={handleResetMeasurement}
+      />
+    );
+  }
+
   return (
     <ScrollView
       style={styles.screen}
@@ -1243,13 +1262,6 @@ export default function HomeScreen() {
             secondary
           />
         </>
-      )}
-
-      {status === 'finished' && (
-        <ActionButton
-          label="新しい計測を始める"
-          onPress={handleResetMeasurement}
-        />
       )}
 
       {loadedMap && (
