@@ -99,7 +99,6 @@ function showResult(){const total=totalPoints(),pct=total?Math.round(discovered/
 function returnToApp(){el.resultScreen.classList.add('hidden');el.appScreen.classList.remove('hidden');window.scrollTo({top:0,behavior:'smooth'})}
 el.eventCode.addEventListener('input',()=>{el.entryError.textContent=''});el.eventCode.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();checkCode()}});el.checkEvent.addEventListener('click',checkCode);el.joinEvent.addEventListener('click',joinEvent);el.cancelPreview.addEventListener('click',()=>{currentEvent=null;el.eventPreview.classList.add('hidden');el.eventCode.focus()});el.leaveEvent.addEventListener('click',leaveEvent);el.toggleMode.addEventListener('click',()=>{growthMode=!growthMode;renderAll()});el.startButton.addEventListener('click',start);el.pauseButton.addEventListener('click',pause);el.resumeButton.addEventListener('click',resume);el.finishButton.addEventListener('click',finish);el.newMeasurementButton.addEventListener('click',()=>resetMeasurement(false));el.simulateWalk.addEventListener('click',simulate);el.resetProgress.addEventListener('click',()=>resetMeasurement(true));el.resultBack.addEventListener('click',returnToApp);el.resultNew.addEventListener('click',()=>{returnToApp();resetMeasurement(false)});el.resultLeave.addEventListener('click',leaveEvent);
 </script>
-<script src="./bonus-map.js?v=20260806-2249"></script>
-<script src="./bonus-area-v1.js?v=20260806-2244"></script>
+<script src="./bonus-map.js?v=20260808-1224"></script>
 </body>
 </html>
