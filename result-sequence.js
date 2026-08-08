@@ -143,17 +143,18 @@
 
     const bonus = getCurrentBonus();
 
+    // 計測終了後は結果画面を2秒見せてから「おや？」を出します。
     schedule(() => {
       setOverlayContent({
         kicker: 'EVENT RESULT',
         main: 'おや？'
       });
       showOverlay();
-    }, 650);
+    }, 2000);
 
     schedule(() => {
       hideOverlay();
-    }, 1450);
+    }, 2800);
 
     schedule(() => {
       setOverlayContent({
@@ -167,11 +168,11 @@
       });
       revealBonusResult();
       showOverlay();
-    }, 1700);
+    }, 3050);
 
     schedule(() => {
       hideOverlay();
-    }, 3050);
+    }, 4400);
   }
 
   const previousShowResult = window.showResult;
