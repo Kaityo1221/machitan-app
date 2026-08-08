@@ -1,0 +1,39 @@
+name: Fix web finish freeze
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-web-finish-freeze.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Remove duplicate area observer and refresh map cache
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('./bonus-map.js?v=20260806-2249', './bonus-map.js?v=20260808-1224')
+          lines = [line for line in text.splitlines() if 'bonus-area-v1.js' not in line]
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+      - name: Commit fix
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Web計測終了時の停止を修正"
+          git push origin main
