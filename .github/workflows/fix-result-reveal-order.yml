@@ -1,0 +1,76 @@
+name: Fix result reveal order
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/fix-result-reveal-order.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fix counter reveal order
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          bonus = Path('bonus-map.js')
+          text = bonus.read_text(encoding='utf-8')
+
+          # Safariでもhiddenが確実に効くようにする
+          text = text.replace(
+              '.area-finale-content[hidden]{display:none!important}',
+              '.area-finale-reveal[hidden]{display:none!important}.area-finale-content[hidden]{display:none!important}'
+          )
+
+          # 最初のカウンターは自分が歩いて広げた範囲だけにする
+          old_play = "const totalKm2=walkedKm2+info.areaKm2;document.getElementById('areaFinaleWalked').textContent=`${walkedKm2.toLocaleString('ja-JP',{minimumFractionDigits:3,maximumFractionDigits:3})} km²`;document.getElementById('areaFinaleBonus').textContent=`${info.areaKm2.toLocaleString('ja-JP',{minimumFractionDigits:3,maximumFractionDigits:3})} km²`;const number=document.querySelector('#areaFinaleCounter span');if(number)number.textContent='';areaAnimationTimeout=setTimeout(()=>animateAreaCounter(totalKm2),120)"
+          new_play = "document.getElementById('areaFinaleWalked').textContent=`${walkedKm2.toLocaleString('ja-JP',{minimumFractionDigits:3,maximumFractionDigits:3})} km²`;document.getElementById('areaFinaleBonus').textContent='';const number=document.querySelector('#areaFinaleCounter span');if(number)number.textContent='';areaAnimationTimeout=setTimeout(()=>animateAreaCounter(walkedKm2),120)"
+          if old_play not in text:
+              raise SystemExit('playAreaFinale target not found')
+          text = text.replace(old_play, new_play, 1)
+
+          # 飛び地発表後に最終合計へ更新する
+          marker = "function showMiniWindow(rawBonus){"
+          insert = "function revealFinalAreaWithBonus(){if(!currentBonus?.officialArea)return;cancelAreaAnimation();const walkedSquareMeters=typeof growthAreaValue==='function'?Number(growthAreaValue())||0:0;const walkedKm2=walkedSquareMeters/1000000;const info=currentBonus.officialArea;const totalKm2=walkedKm2+info.areaKm2;const walked=document.getElementById('areaFinaleWalked');const bonus=document.getElementById('areaFinaleBonus');const replay=document.getElementById('areaFinaleReplay');if(walked)walked.textContent=`${walkedKm2.toLocaleString('ja-JP',{minimumFractionDigits:3,maximumFractionDigits:3})} km²`;if(bonus)bonus.textContent=`${info.areaKm2.toLocaleString('ja-JP',{minimumFractionDigits:3,maximumFractionDigits:3})} km²`;if(replay)replay.hidden=true;areaAnimationTimeout=setTimeout(()=>animateAreaCounter(totalKm2),180)}\n  window.addEventListener('machitan:bonus-revealed',revealFinalAreaWithBonus);\n\n  "
+          if 'machitan:bonus-revealed' not in text:
+              if marker not in text:
+                  raise SystemExit('showMiniWindow marker not found')
+              text = text.replace(marker, insert + marker, 1)
+
+          bonus.write_text(text, encoding='utf-8')
+
+          seq = Path('result-sequence.js')
+          text = seq.read_text(encoding='utf-8')
+
+          # 飛び地カードと最終合計は、発表オーバーレイが閉じてから解禁
+          old_bonus_block = "      revealBonusResult();\n      showOverlay();\n    }, 2050);\n\n    schedule(() => {\n      hideOverlay();\n    }, 3400);"
+          new_bonus_block = "      showOverlay();\n    }, 2050);\n\n    schedule(() => {\n      hideOverlay();\n      revealBonusResult();\n      window.dispatchEvent(new CustomEvent('machitan:bonus-revealed'));\n    }, 3400);"
+          if old_bonus_block not in text:
+              raise SystemExit('result sequence bonus block not found')
+          text = text.replace(old_bonus_block, new_bonus_block, 1)
+          seq.write_text(text, encoding='utf-8')
+
+          index = Path('index.html')
+          text = index.read_text(encoding='utf-8')
+          import re
+          text = re.sub(r'\.\/bonus-map\.js\?v=[^"\']+', './bonus-map.js?v=20260809-1632', text)
+          text = re.sub(r'\.\/result-sequence\.js\?v=[^"\']+', './result-sequence.js?v=20260809-1632', text)
+          index.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bonus-map.js result-sequence.js index.html
+          git commit -m "結果カウンターと飛び地発表の順序を修正"
+          git push origin main
