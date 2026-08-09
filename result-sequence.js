@@ -174,12 +174,13 @@
           : '',
         bonus: true
       });
-      revealBonusResult();
       showOverlay();
     }, 2050);
 
     schedule(() => {
       hideOverlay();
+      revealBonusResult();
+      window.dispatchEvent(new CustomEvent('machitan:bonus-revealed'));
     }, 3400);
   }
 
