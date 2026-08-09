@@ -17,6 +17,8 @@ import MapView, {
   Polygon,
 } from 'react-native-maps';
 
+import { useEventSession } from '../src/components/EventEntryGate';
+import { MeasurementResultScreen } from '../src/components/MeasurementResultScreen';
 import {
   associateAreasWithPois,
   calculateDistanceMeters,
@@ -28,6 +30,12 @@ import {
   loadGameState,
   saveGameState,
 } from '../src/lib/storage';
+import {
+  calculateUniqueEffectAreaSquareMeters,
+  formatAreaSquareMeters,
+  getTownGrowthStage,
+} from '../src/lib/townGrowth';
+import { createTownGrowthPetalCoordinates } from '../src/lib/townGrowthShape';
 import type {
   Coordinates,
   ParsedMap,
@@ -45,7 +53,6 @@ const MIN_MOVEMENT_METERS = 4;
 const MAX_REASONABLE_JUMP_METERS = 30;
 const MAX_WALKING_SPEED_METERS_PER_SECOND = 4.5;
 const DISCOVERY_RADIUS_METERS = 25;
-const DEFAULT_EFFECT_RADIUS_METERS = 30;
 const MAX_DISCOVERY_ACCURACY_BONUS_METERS = 5;
 
 // 地図を縮小したときは、Apple Mapsに間引かれやすいピンではなく、
@@ -55,6 +62,8 @@ const OVERVIEW_POI_RADIUS_METERS = 9;
 
 export default function HomeScreen() {
   useKeepAwake();
+
+  const { activeEvent } = useEventSession();
 
   const [status, setStatus] =
     useState<MeasurementStatus>('idle');
@@ -177,7 +186,6 @@ export default function HomeScreen() {
     [loadedMap],
   );
 
-
   const discoveredCount = discoveredPoiIds.length;
   const totalPoiCount = loadedMap?.pois.length ?? 0;
 
@@ -188,103 +196,29 @@ export default function HomeScreen() {
           (discoveredCount / totalPoiCount) * 100,
         );
 
-  const expandedAreaSquareMeters = useMemo(() => {
-    if (!loadedMap || discoveredPoiIds.length === 0) {
-      return 0;
-    }
+  const expandedAreaSquareMeters = useMemo(
+    () =>
+      loadedMap
+        ? calculateUniqueEffectAreaSquareMeters(
+            loadedMap.pois,
+            discoveredPoiIdSet,
+          )
+        : 0,
+    [discoveredPoiIdSet, loadedMap],
+  );
 
-    const discoveredPois = loadedMap.pois.filter((poi) =>
-      discoveredPoiIdSet.has(poi.id),
+  const formattedExpandedArea = formatAreaSquareMeters(
+    expandedAreaSquareMeters,
+  );
+
+  const townGrowthStage = getTownGrowthStage(
+    expandedAreaSquareMeters,
+  );
+
+  const formattedRemainingGrowthArea =
+    formatAreaSquareMeters(
+      townGrowthStage.remainingAreaSquareMeters,
     );
-
-    if (discoveredPois.length === 0) {
-      return 0;
-    }
-
-    const GRID_SIZE_METERS = 2;
-    const referenceLatitudeRadians =
-      (discoveredPois[0].latitude * Math.PI) / 180;
-    const metersPerLatitudeDegree = 111320;
-    const metersPerLongitudeDegree =
-      111320 * Math.cos(referenceLatitudeRadians);
-
-    const originLatitude = discoveredPois[0].latitude;
-    const originLongitude = discoveredPois[0].longitude;
-
-    const occupiedCells = new Set<string>();
-    const radiusInCells = Math.ceil(
-      DEFAULT_EFFECT_RADIUS_METERS /
-        GRID_SIZE_METERS,
-    );
-
-    for (const poi of discoveredPois) {
-      const centerX =
-        (poi.longitude - originLongitude) *
-        metersPerLongitudeDegree;
-      const centerY =
-        (poi.latitude - originLatitude) *
-        metersPerLatitudeDegree;
-
-      const centerCellX = Math.round(
-        centerX / GRID_SIZE_METERS,
-      );
-      const centerCellY = Math.round(
-        centerY / GRID_SIZE_METERS,
-      );
-
-      for (
-        let offsetX = -radiusInCells;
-        offsetX <= radiusInCells;
-        offsetX += 1
-      ) {
-        for (
-          let offsetY = -radiusInCells;
-          offsetY <= radiusInCells;
-          offsetY += 1
-        ) {
-          const cellCenterX =
-            (centerCellX + offsetX) *
-            GRID_SIZE_METERS;
-          const cellCenterY =
-            (centerCellY + offsetY) *
-            GRID_SIZE_METERS;
-
-          const distanceFromPoi = Math.hypot(
-            cellCenterX - centerX,
-            cellCenterY - centerY,
-          );
-
-          if (
-            distanceFromPoi <=
-            DEFAULT_EFFECT_RADIUS_METERS
-          ) {
-            occupiedCells.add(
-              `${centerCellX + offsetX}:${
-                centerCellY + offsetY
-              }`,
-            );
-          }
-        }
-      }
-    }
-
-    return (
-      occupiedCells.size *
-      GRID_SIZE_METERS *
-      GRID_SIZE_METERS
-    );
-  }, [
-    discoveredPoiIdSet,
-    discoveredPoiIds.length,
-    loadedMap,
-  ]);
-
-  const formattedExpandedArea =
-    expandedAreaSquareMeters >= 1000
-      ? `${(expandedAreaSquareMeters / 10000).toFixed(2)} ha`
-      : `${Math.round(expandedAreaSquareMeters)
-          .toString()
-          .replace(/\B(?=(\d{3})+(?!\d))/g, ',')} m²`;
 
   const nearestPoiInfo = useMemo(() => {
     if (!currentCoordinates || !loadedMap) {
@@ -363,7 +297,6 @@ export default function HomeScreen() {
           savedState.discoveredPoiIds,
         );
       }
-
     } catch (error) {
       console.warn('保存データを復元できませんでした。', error);
     }
@@ -927,6 +860,25 @@ export default function HomeScreen() {
     finished: '計測終了',
   }[status];
 
+  if (status === 'finished') {
+    return (
+      <MeasurementResultScreen
+        elapsedTime={formattedElapsedTime}
+        distance={formattedDistance}
+        discoveredCount={discoveredCount}
+        totalPoiCount={totalPoiCount}
+        completionPercentage={completionPercentage}
+        expandedAreaSquareMeters={expandedAreaSquareMeters}
+        stageName={townGrowthStage.name}
+        stageDescription={townGrowthStage.description}
+        loadedMap={loadedMap}
+        discoveredPoiIds={discoveredPoiIds}
+        eventSeed={activeEvent.primaryCode}
+        onStartNewMeasurement={handleResetMeasurement}
+      />
+    );
+  }
+
   return (
     <ScrollView
       style={styles.screen}
@@ -1046,7 +998,6 @@ export default function HomeScreen() {
               handleMapRegionChangeComplete
             }
           >
-
             {isTownGrowthMode &&
               areaPoiAssociations.map(
                 ({ area, poiId }) =>
@@ -1054,33 +1005,31 @@ export default function HomeScreen() {
                     <Polygon
                       key={area.id}
                       coordinates={area.coordinates}
-                      strokeColor="rgba(55, 95, 58, 0.95)"
-                      fillColor="rgba(87, 166, 91, 0.52)"
-                      strokeWidth={2}
+                      strokeColor="rgba(55, 95, 58, 0.82)"
+                      fillColor="rgba(87, 166, 91, 0.34)"
+                      strokeWidth={1.5}
                     />
                   ) : null,
               )}
 
             {isTownGrowthMode &&
               loadedMap?.pois.map((poi) => {
-                const isDiscovered =
-                  discoveredPoiIdSet.has(poi.id);
-
-                if (!isDiscovered) {
+                if (!discoveredPoiIdSet.has(poi.id)) {
                   return null;
                 }
 
                 return (
-                  <Circle
-                    key={`fill-${poi.id}`}
-                    center={{
-                      latitude: poi.latitude,
-                      longitude: poi.longitude,
-                    }}
-                    radius={DEFAULT_EFFECT_RADIUS_METERS}
-                    strokeWidth={2}
-                    strokeColor="rgba(55, 95, 58, 0.95)"
-                    fillColor="rgba(87, 166, 91, 0.52)"
+                  <Polygon
+                    key={`petal-${poi.id}`}
+                    coordinates={
+                      createTownGrowthPetalCoordinates(
+                        poi,
+                        poi.id,
+                      )
+                    }
+                    strokeColor="rgba(61, 121, 68, 0.78)"
+                    fillColor="rgba(116, 190, 113, 0.44)"
+                    strokeWidth={1.5}
                   />
                 );
               })}
@@ -1214,16 +1163,54 @@ export default function HomeScreen() {
 
       {isTownGrowthMode && (
         <View style={styles.areaCard}>
-          <Text style={styles.resultLabel}>
-            育てた緑
+          <Text style={styles.growthStageLabel}>
+            現在のまち
           </Text>
 
-          <Text style={styles.areaValue}>
-            {formattedExpandedArea}
+          <Text style={styles.growthStageName}>
+            {townGrowthStage.name}
           </Text>
+
+          <Text style={styles.growthStageDescription}>
+            {townGrowthStage.description}
+          </Text>
+
+          <View style={styles.growthAreaRow}>
+            <Text style={styles.resultLabel}>
+              育てた緑
+            </Text>
+
+            <Text style={styles.areaValue}>
+              {formattedExpandedArea}
+            </Text>
+          </View>
+
+          {townGrowthStage.nextStageName ? (
+            <>
+              <View style={styles.growthProgressTrack}>
+                <View
+                  style={[
+                    styles.growthProgressFill,
+                    {
+                      width: `${townGrowthStage.progressPercentage}%`,
+                    },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.growthNextText}>
+                次は「{townGrowthStage.nextStageName}」まで
+                あと{formattedRemainingGrowthArea}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.growthNextText}>
+              最高ステージまで育ちました
+            </Text>
+          )}
 
           <Text style={styles.areaNote}>
-            2m四方のマスで、重なった領域を一度だけ数えています。
+            花びらは表示演出です。緑の重なりは一度だけ数えています。
           </Text>
         </View>
       )}
@@ -1279,13 +1266,6 @@ export default function HomeScreen() {
             secondary
           />
         </>
-      )}
-
-      {status === 'finished' && (
-        <ActionButton
-          label="新しい計測を始める"
-          onPress={handleResetMeasurement}
-        />
       )}
 
       {loadedMap && (
@@ -1546,14 +1526,54 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#FFFFFF',
   },
-  areaValue: {
-    marginTop: 7,
-    fontSize: 28,
+  growthStageLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#697169',
+  },
+  growthStageName: {
+    marginTop: 4,
+    fontSize: 26,
     fontWeight: '800',
     color: '#375F3A',
   },
+  growthStageDescription: {
+    marginTop: 5,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#5B675C',
+  },
+  growthAreaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  areaValue: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#375F3A',
+  },
+  growthProgressTrack: {
+    height: 9,
+    marginTop: 13,
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: '#E3E7E0',
+  },
+  growthProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#57A65B',
+  },
+  growthNextText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#375F3A',
+  },
   areaNote: {
-    marginTop: 6,
+    marginTop: 8,
     fontSize: 11,
     lineHeight: 17,
     color: '#697169',
