@@ -1,0 +1,49 @@
+name: Connect counter settled event
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/connect-counter-settled-event.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Dispatch event when area counter settles
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('bonus-map.js')
+          text = p.read_text(encoding='utf-8')
+          old = "if(replay)replay.hidden=false;areaAnimationFrame=null"
+          new = "if(replay)replay.hidden=false;window.dispatchEvent(new CustomEvent('machitan:area-counter-settled'));areaAnimationFrame=null"
+          if old not in text:
+              raise SystemExit('target not found')
+          text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Refresh script cache versions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          text = re.sub(r'\.\/bonus-map\.js\?v=[^"\']+', './bonus-map.js?v=20260809-1625', text)
+          text = re.sub(r'\.\/result-sequence\.js\?v=[^"\']+', './result-sequence.js?v=20260809-1625', text)
+          p.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bonus-map.js index.html
+          git commit -m "カウンター停止後に飛び地演出を開始"
+          git push origin main
