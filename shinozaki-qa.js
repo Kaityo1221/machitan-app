@@ -1,0 +1,12 @@
+(()=>{'use strict';
+const METRIC_PREFIX='machitan.shinozaki.qa.day.v1.',MAX_ACC=20,MAX_JUMP=30,MAX_SPEED=4.5;
+const dateKey=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const key=()=>METRIC_PREFIX+dateKey();
+const load=()=>{try{return JSON.parse(localStorage.getItem(key()))||{v:1,date:dateKey(),samples:0,acceptedAccuracySamples:0,rejectedAccuracySamples:0,accuracySum:0,bestAccuracy:null,worstAccuracy:null,invalidJumpSamples:0,lastUpdated:null}}catch{return{v:1,date:dateKey(),samples:0,acceptedAccuracySamples:0,rejectedAccuracySamples:0,accuracySum:0,bestAccuracy:null,worstAccuracy:null,invalidJumpSamples:0,lastUpdated:null}}};
+const save=m=>{m.lastUpdated=Date.now();localStorage.setItem(key(),JSON.stringify(m))};
+const meters=(a,b)=>{const r=6371000,k=Math.PI/180,x1=a.lat*k,x2=b.lat*k,da=(b.lat-a.lat)*k,dl=(b.lng-a.lng)*k,h=Math.sin(da/2)**2+Math.cos(x1)*Math.cos(x2)*Math.sin(dl/2)**2;return 2*r*Math.asin(Math.min(1,Math.sqrt(h)))};
+if(!navigator.geolocation||typeof navigator.geolocation.watchPosition!=='function')return;
+const original=navigator.geolocation.watchPosition.bind(navigator.geolocation);
+let prev=null;
+navigator.geolocation.watchPosition=(success,error,options)=>original(position=>{try{const m=load(),acc=Number.isFinite(position.coords.accuracy)?position.coords.accuracy:9999,ts=position.timestamp||Date.now(),speed=Number.isFinite(position.coords.speed)&&position.coords.speed>=0?position.coords.speed:null,next={lat:position.coords.latitude,lng:position.coords.longitude,ts};m.samples++;if(acc<=MAX_ACC){m.acceptedAccuracySamples++;m.accuracySum+=acc;m.bestAccuracy=m.bestAccuracy===null?acc:Math.min(m.bestAccuracy,acc);m.worstAccuracy=m.worstAccuracy===null?acc:Math.max(m.worstAccuracy,acc);if(prev){const d=meters(prev,next),sec=Math.max((ts-prev.ts)/1000,.5),calc=d/sec,bad=d>Math.max(MAX_JUMP,sec*MAX_SPEED+5)||calc>MAX_SPEED||(speed!==null&&speed>MAX_SPEED);if(bad)m.invalidJumpSamples++}prev=next}else{m.rejectedAccuracySamples++}save(m)}catch{}success(position)},error,options);
+})();
