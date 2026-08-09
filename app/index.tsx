@@ -17,6 +17,7 @@ import MapView, {
   Polygon,
 } from 'react-native-maps';
 
+import { useEventSession } from '../src/components/EventEntryGate';
 import { MeasurementResultScreen } from '../src/components/MeasurementResultScreen';
 import {
   associateAreasWithPois,
@@ -61,6 +62,8 @@ const OVERVIEW_POI_RADIUS_METERS = 9;
 
 export default function HomeScreen() {
   useKeepAwake();
+
+  const { activeEvent } = useEventSession();
 
   const [status, setStatus] =
     useState<MeasurementStatus>('idle');
@@ -865,11 +868,12 @@ export default function HomeScreen() {
         discoveredCount={discoveredCount}
         totalPoiCount={totalPoiCount}
         completionPercentage={completionPercentage}
-        expandedArea={formattedExpandedArea}
+        expandedAreaSquareMeters={expandedAreaSquareMeters}
         stageName={townGrowthStage.name}
         stageDescription={townGrowthStage.description}
         loadedMap={loadedMap}
         discoveredPoiIds={discoveredPoiIds}
+        eventSeed={activeEvent.primaryCode}
         onStartNewMeasurement={handleResetMeasurement}
       />
     );
