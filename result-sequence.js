@@ -11,6 +11,11 @@
       transform: translateY(14px);
       pointer-events: none;
     }
+    body.machitan-result-sequence-pending #areaFinaleCard .area-finale-breakdown,
+    body.machitan-result-sequence-pending #areaFinaleCard .area-finale-note,
+    body.machitan-result-sequence-pending #areaFinaleCard .area-finale-replay {
+      display: none !important;
+    }
     #resultScreen .bonus-card {
       transition: opacity .45s ease, transform .45s ease;
     }
@@ -92,6 +97,8 @@
   document.body.appendChild(overlay);
 
   let timers = [];
+  let sequenceArmed = false;
+  let sequencePlayed = false;
 
   function clearTimers() {
     timers.forEach((timer) => clearTimeout(timer));
@@ -137,24 +144,25 @@
   }
 
   function runResultSequence() {
+    if (!sequenceArmed || sequencePlayed) return;
+    sequencePlayed = true;
     clearTimers();
     hideOverlay();
-    document.body.classList.add('machitan-result-sequence-pending');
 
     const bonus = getCurrentBonus();
 
-    // 計測終了後は結果画面を2秒見せてから「おや？」を出します。
+    // カウンター停止後、少し余韻を置いてから「おや？」。
     schedule(() => {
       setOverlayContent({
         kicker: 'EVENT RESULT',
         main: 'おや？'
       });
       showOverlay();
-    }, 2000);
+    }, 1000);
 
     schedule(() => {
       hideOverlay();
-    }, 2800);
+    }, 1800);
 
     schedule(() => {
       setOverlayContent({
@@ -168,20 +176,24 @@
       });
       revealBonusResult();
       showOverlay();
-    }, 3050);
+    }, 2050);
 
     schedule(() => {
       hideOverlay();
-    }, 4400);
+    }, 3400);
   }
+
+  window.addEventListener('machitan:area-counter-settled', runResultSequence);
 
   const previousShowResult = window.showResult;
   if (typeof previousShowResult === 'function') {
     window.showResult = function (...args) {
+      clearTimers();
+      hideOverlay();
+      sequenceArmed = true;
+      sequencePlayed = false;
       document.body.classList.add('machitan-result-sequence-pending');
-      const result = previousShowResult.apply(this, args);
-      runResultSequence();
-      return result;
+      return previousShowResult.apply(this, args);
     };
   }
 
@@ -190,6 +202,8 @@
     window.returnToApp = function (...args) {
       clearTimers();
       hideOverlay();
+      sequenceArmed = false;
+      sequencePlayed = false;
       document.body.classList.remove('machitan-result-sequence-pending');
       return previousReturnToApp.apply(this, args);
     };
