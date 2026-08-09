@@ -133,9 +133,9 @@
 
     later(() => {
       showSequence({ kicker: 'EVENT RESULT', main: 'おや？' });
-    }, 1000);
+    }, 1500);
 
-    later(() => hideSequence(), 1800);
+    later(() => hideSequence(), 2800);
 
     later(() => {
       showSequence({
@@ -145,7 +145,7 @@
         note: bonus.comment,
         bonus: true
       });
-    }, 2050);
+    }, 3050);
 
     later(() => {
       hideSequence();
@@ -168,7 +168,7 @@
       animateCounter(ownKm2, ownKm2 + bonus.areaKm2, 2100, () => {
         if (replay) replay.style.display = 'block';
       });
-    }, 3400);
+    }, 4400);
   }
 
   function startOwnCounter() {
