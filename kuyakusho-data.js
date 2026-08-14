@@ -1,0 +1,1 @@
+window.KUYAKUSHO_DATA=''' + ''
