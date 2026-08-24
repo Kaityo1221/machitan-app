@@ -36,6 +36,7 @@ import type {
 
 type MeasurementStatus =
   | 'idle'
+  | 'locating'
   | 'running'
   | 'paused'
   | 'finished';
@@ -101,6 +102,9 @@ export default function HomeScreen() {
 
   const locationSubscriptionRef =
     useRef<Location.LocationSubscription | null>(null);
+
+  // 位置情報の許可直後は測位が安定するまで本計測を開始しません。
+  const awaitingFirstFixRef = useRef(false);
 
   const mapRef = useRef<MapView | null>(null);
   const loadedMapRef = useRef<ParsedMap | null>(null);
@@ -419,7 +423,7 @@ export default function HomeScreen() {
       locationSubscriptionRef.current?.remove();
       locationSubscriptionRef.current = null;
 
-      setGpsMessage('GPSを取得中');
+      setGpsMessage('現在地を確認しています…');
 
       const subscription =
         await Location.watchPositionAsync(
@@ -476,6 +480,22 @@ export default function HomeScreen() {
         accuracy,
       )}m）`,
     );
+
+    // 最初の有効な測位を取得できた時点を、本当の計測開始地点にします。
+    // 許可直後の粗いGPSや地下・電車内での測位待ち時間は計測時間に含めません。
+    if (awaitingFirstFixRef.current) {
+      awaitingFirstFixRef.current = false;
+      previousCoordinatesRef.current = nextCoordinates;
+      previousLocationTimestampRef.current = location.timestamp;
+
+      // 開始地点のすぐ近くにあるポイポイは、その場で攻略判定します。
+      discoverPoisAlongMovement(nextCoordinates, nextCoordinates);
+
+      startedAtRef.current = Date.now();
+      setElapsedMilliseconds(accumulatedMillisecondsRef.current);
+      setStatus('running');
+      return;
+    }
 
     const movement = evaluateMovement(
       nextCoordinates,
@@ -642,6 +662,7 @@ export default function HomeScreen() {
   };
 
   const stopLocationTracking = () => {
+    awaitingFirstFixRef.current = false;
     locationSubscriptionRef.current?.remove();
     locationSubscriptionRef.current = null;
     previousCoordinatesRef.current = null;
@@ -654,19 +675,19 @@ export default function HomeScreen() {
     distanceMetersRef.current = 0;
     previousCoordinatesRef.current = null;
     previousLocationTimestampRef.current = null;
+    awaitingFirstFixRef.current = true;
 
     setElapsedMilliseconds(0);
     setDistanceMeters(0);
+    setStatus('locating');
 
     const trackingStarted =
       await startLocationTracking();
 
     if (!trackingStarted) {
-      return;
+      awaitingFirstFixRef.current = false;
+      setStatus('idle');
     }
-
-    startedAtRef.current = Date.now();
-    setStatus('running');
   };
 
   const handlePause = () => {
@@ -689,16 +710,16 @@ export default function HomeScreen() {
   const handleResume = async () => {
     previousCoordinatesRef.current = null;
     previousLocationTimestampRef.current = null;
+    awaitingFirstFixRef.current = true;
+    setStatus('locating');
 
     const trackingStarted =
       await startLocationTracking();
 
     if (!trackingStarted) {
-      return;
+      awaitingFirstFixRef.current = false;
+      setStatus('paused');
     }
-
-    startedAtRef.current = Date.now();
-    setStatus('running');
   };
 
   const handleFinish = () => {
@@ -735,7 +756,11 @@ export default function HomeScreen() {
   };
 
   const handlePickMapFile = async () => {
-    if (status === 'running' || status === 'paused') {
+    if (
+      status === 'locating' ||
+      status === 'running' ||
+      status === 'paused'
+    ) {
       Alert.alert(
         '計測中です',
         '地図データを入れ替える前に計測を終了してください。',
@@ -812,7 +837,11 @@ export default function HomeScreen() {
   };
 
   const handleRemoveMap = () => {
-    if (status === 'running' || status === 'paused') {
+    if (
+      status === 'locating' ||
+      status === 'running' ||
+      status === 'paused'
+    ) {
       return;
     }
 
@@ -922,6 +951,7 @@ export default function HomeScreen() {
 
   const statusText = {
     idle: '計測前',
+    locating: '現在地を確認中',
     running: '計測中',
     paused: '一時停止中',
     finished: '計測終了',
@@ -1249,6 +1279,22 @@ export default function HomeScreen() {
           label="計測を開始"
           onPress={handleStart}
         />
+      )}
+
+      {status === 'locating' && (
+        <>
+          <ActionButton
+            label="現在地を確認しています…"
+            onPress={() => {}}
+            disabled
+          />
+
+          <ActionButton
+            label="キャンセル"
+            onPress={handleResetMeasurement}
+            secondary
+          />
+        </>
       )}
 
       {status === 'running' && (
