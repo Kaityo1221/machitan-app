@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>まちたん！ GPS計測テスト</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#102118;background:#edf4ef}body{margin:0;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}main{max-width:760px;margin:auto;padding:16px}.card{background:#fff;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 6px 24px #00000012}h1{font-size:24px;margin:0 0 4px}.sub{color:#567060;margin:0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#f4f8f5;border-radius:14px;padding:12px}.metric b{display:block;font-size:22px;margin-top:3px}button,.filelabel{width:100%;box-sizing:border-box;border:0;border-radius:14px;padding:14px 12px;font-size:16px;font-weight:700;margin-top:10px;text-align:center}.primary{background:#176d3b;color:#fff}.secondary{background:#dfece3;color:#173c27}.danger{background:#fae4e4;color:#8a2020}.filelabel{display:block;background:#203c2b;color:#fff}input[type=file]{display:none}button:disabled{opacity:.45}#map{height:340px;border-radius:16px;overflow:hidden}.status{font-weight:800}.ok{color:#176d3b}.warn{color:#9a6200}.bad{color:#a92e2e}.small{font-size:13px;color:#66756b;line-height:1.5}.log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:#0e1712;color:#cfe6d7;border-radius:12px;padding:10px;max-height:170px;overflow:auto;white-space:pre-wrap}.pill{display:inline-block;background:#e7f2ea;border-radius:999px;padding:5px 9px;margin:3px 4px 3px 0;font-size:12px}</style>
+</head>
+<body>
+<main>
+  <div class="card"><h1>まちたん！ GPS計測テスト</h1><p class="sub">Safari実走用 / Campsite AI連携検証</p></div>
+
+  <div class="card">
+    <label class="filelabel" for="mapFile">KMZ / KML を読み込む</label>
+    <input id="mapFile" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" />
+    <div id="mapInfo" class="small" style="margin-top:10px">地図データ未読込</div>
+  </div>
+
+  <div class="card">
+    <div class="status" id="status">GPS待機中</div>
+    <button class="primary" id="start">位置情報を許可して計測開始</button>
+    <button class="secondary" id="stop" disabled>計測終了</button>
+    <button class="danger" id="reset">計測をリセット</button>
+    <p class="small">画面を消したりSafariをバックグラウンドにすると、iOSがGPS更新を止める場合があります。今日の比較テストでは画面を表示したまま使ってください。</p>
+  </div>
+
+  <div class="card grid">
+    <div class="metric">経過時間<b id="elapsed">00:00:00</b></div>
+    <div class="metric">採用距離<b id="distance">0 m</b></div>
+    <div class="metric">現在精度<b id="accuracy">-- m</b></div>
+    <div class="metric">採用 / 生GPS<b id="counts">0 / 0</b></div>
+    <div class="metric">初回GPS<b id="firstRaw">--</b></div>
+    <div class="metric">初回有効測位<b id="firstFix">--</b></div>
+  </div>
+
+  <div class="card">
+    <div>
+      <span class="pill">20m超は精度不足</span>
+      <span class="pill">4m未満は距離加算なし</span>
+      <span class="pill">4.5m/s超はGPS飛び候補</span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <div class="card">
+    <button class="primary" id="export">計測結果JSONを保存</button>
+    <div id="summary" class="small" style="margin-top:10px">除外: 精度不足 0 / GPS飛び 0</div>
+    <div id="log" class="log">ready</div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const MAX_ACC=20, MIN_MOVE=4, MAX_SPEED=4.5, MAX_JUMP=30;
+const $=id=>document.getElementById(id);
+const state={startedAt:null,watchId:null,raw:[],accepted:[],rejectedAccuracy:0,rejectedJump:0,distance:0,lastAccepted:null,firstRawMs:null,firstFixMs:null,pois:[],mapSource:null};
+const map=L.map('map').setView([35.6812,139.7671],13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'&copy; OpenStreetMap'}).addTo(map);
+const poiLayer=L.layerGroup().addTo(map), trackLayer=L.layerGroup().addTo(map); let userMarker=null, trackLine=null, timer=null;
+function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,5000)}
+function hav(a,b){const R=6371000,toR=x=>x*Math.PI/180,dLat=toR(b.lat-a.lat),dLon=toR(b.lon-a.lon),la1=toR(a.lat),la2=toR(b.lat);const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+function fmtMs(ms){if(ms==null)return'--';return (ms/1000).toFixed(1)+' s'}
+function refresh(){const e=state.startedAt?Date.now()-state.startedAt:0; const s=Math.floor(e/1000),h=String(Math.floor(s/3600)).padStart(2,'0'),m=String(Math.floor(s%3600/60)).padStart(2,'0'),ss=String(s%60).padStart(2,'0');$('elapsed').textContent=`${h}:${m}:${ss}`;$('distance').textContent=state.distance>=1000?(state.distance/1000).toFixed(2)+' km':Math.round(state.distance)+' m';$('counts').textContent=state.accepted.length+' / '+state.raw.length;$('firstRaw').textContent=fmtMs(state.firstRawMs);$('firstFix').textContent=fmtMs(state.firstFixMs);$('summary').textContent=`除外: 精度不足 ${state.rejectedAccuracy} / GPS飛び ${state.rejectedJump}`}
+function drawUser(p){if(!userMarker)userMarker=L.circleMarker([p.lat,p.lon],{radius:8}).addTo(map);else userMarker.setLatLng([p.lat,p.lon]); if(state.accepted.length===1)map.setView([p.lat,p.lon],18); if(trackLine)trackLine.remove(); if(state.accepted.length>1)trackLine=L.polyline(state.accepted.map(x=>[x.lat,x.lon]),{weight:5}).addTo(trackLayer)}
+function onPos(pos){const now=Date.now(),c=pos.coords,p={ts:pos.timestamp||now,receivedAt:now,lat:c.latitude,lon:c.longitude,accuracy:c.accuracy,speed:c.speed,altitude:c.altitude,heading:c.heading};state.raw.push(p);if(state.firstRawMs==null)state.firstRawMs=now-state.startedAt;$('accuracy').textContent=Math.round(c.accuracy||9999)+' m';drawUser(p);
+ if((c.accuracy??9999)>MAX_ACC){state.rejectedAccuracy++;$('status').textContent=`GPS精度を調整中（約${Math.round(c.accuracy)}m）`;$('status').className='status warn';log('除外 accuracy '+Math.round(c.accuracy)+'m');refresh();return}
+ if(state.firstFixMs==null){state.firstFixMs=now-state.startedAt;state.lastAccepted=p;state.accepted.push({...p,decision:'accepted:first_fix'});$('status').textContent='GPS受信中';$('status').className='status ok';log('初回有効測位 '+fmtMs(state.firstFixMs));refresh();drawUser(p);return}
+ const prev=state.lastAccepted,dt=Math.max((p.ts-prev.ts)/1000,.5),d=hav(prev,p),calcSpeed=d/dt,reported=(p.speed!=null&&p.speed>=0)?p.speed:null,maxD=Math.max(MAX_JUMP,dt*MAX_SPEED+5),jump=d>maxD||calcSpeed>MAX_SPEED||(reported!=null&&reported>MAX_SPEED);
+ if(jump){state.rejectedJump++;state.raw[state.raw.length-1].decision='rejected:jump';state.raw[state.raw.length-1].distanceFromBaseline=d;log('除外 jump '+Math.round(d)+'m / '+calcSpeed.toFixed(1)+'m/s');refresh();return}
+ state.accepted.push({...p,decision:d>=MIN_MOVE?'accepted:distance':'accepted:jitter',distanceFromPrevious:d,calculatedSpeed:calcSpeed});if(d>=MIN_MOVE){state.distance+=d;state.lastAccepted=p}else{ /* 基準を保持して微小揺れをまとめる */ }
+ $('status').textContent=`GPS受信中（精度 約${Math.round(c.accuracy)}m）`;$('status').className='status ok';refresh();drawUser(p)}
+function onErr(err){$('status').textContent='位置情報エラー: '+err.message;$('status').className='status bad';log('GPS error '+err.code+' '+err.message)}
+$('start').onclick=()=>{if(!navigator.geolocation){alert('このSafariでは位置情報APIを利用できません');return}state.startedAt=Date.now();state.raw=[];state.accepted=[];state.rejectedAccuracy=0;state.rejectedJump=0;state.distance=0;state.lastAccepted=null;state.firstRawMs=null;state.firstFixMs=null;$('status').textContent='位置情報の許可を確認中';$('start').disabled=true;$('stop').disabled=false;timer=setInterval(refresh,250);state.watchId=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:20000});log('measurement start')};
+$('stop').onclick=()=>{if(state.watchId!=null)navigator.geolocation.clearWatch(state.watchId);state.watchId=null;clearInterval(timer);$('status').textContent='計測終了';$('status').className='status';$('start').disabled=false;$('stop').disabled=true;log('measurement stop');refresh()};
+$('reset').onclick=()=>{if(state.watchId!=null)navigator.geolocation.clearWatch(state.watchId);clearInterval(timer);Object.assign(state,{startedAt:null,watchId:null,raw:[],accepted:[],rejectedAccuracy:0,rejectedJump:0,distance:0,lastAccepted:null,firstRawMs:null,firstFixMs:null});trackLayer.clearLayers();trackLine=null;$('status').textContent='GPS待機中';$('status').className='status';$('accuracy').textContent='-- m';$('start').disabled=false;$('stop').disabled=true;$('log').textContent='reset';refresh()};
+$('export').onclick=()=>{const payload={schema:'machitan-web-measurement-v1',exportedAt:new Date().toISOString(),mapSource:state.mapSource,poiCount:state.pois.length,settings:{maxAcceptableAccuracyMeters:MAX_ACC,minMovementMeters:MIN_MOVE,maxWalkingSpeedMetersPerSecond:MAX_SPEED,maxReasonableJumpMeters:MAX_JUMP},summary:{firstRawMs:state.firstRawMs,firstValidFixMs:state.firstFixMs,rawCount:state.raw.length,acceptedCount:state.accepted.length,rejectedAccuracy:state.rejectedAccuracy,rejectedJump:state.rejectedJump,distanceMeters:state.distance,averageAccuracyMeters:state.raw.length?state.raw.reduce((a,x)=>a+(x.accuracy||0),0)/state.raw.length:null},pois:state.pois,samples:state.raw,acceptedTrack:state.accepted};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='machitan-web-test-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+function parseKml(txt){const xml=new DOMParser().parseFromString(txt,'application/xml'),arr=[];xml.querySelectorAll('Placemark').forEach((pm,i)=>{const name=pm.querySelector('name')?.textContent?.trim()||`POI ${i+1}`,coords=pm.querySelector('Point coordinates')?.textContent?.trim();if(!coords)return;const [lon,lat]=coords.split(',').map(Number);if(Number.isFinite(lat)&&Number.isFinite(lon))arr.push({name,lat,lon})});return arr}
+async function loadMapFile(file){poiLayer.clearLayers();let texts=[];if(file.name.toLowerCase().endsWith('.kmz')){const zip=await JSZip.loadAsync(await file.arrayBuffer());for(const n of Object.keys(zip.files)){if(n.toLowerCase().endsWith('.kml')&&!zip.files[n].dir)texts.push(await zip.files[n].async('text'))}}else{texts=[await file.text()]}const byKey=new Map();texts.flatMap(parseKml).forEach(p=>byKey.set(p.lat.toFixed(7)+','+p.lon.toFixed(7),p));state.pois=[...byKey.values()];state.mapSource=file.name;state.pois.forEach(p=>L.circleMarker([p.lat,p.lon],{radius:6}).bindTooltip(p.name).addTo(poiLayer));$('mapInfo').textContent=`${file.name} / POI ${state.pois.length}件`;if(state.pois.length){const bounds=L.latLngBounds(state.pois.map(p=>[p.lat,p.lon]));map.fitBounds(bounds.pad(.15))}log('map loaded '+file.name+' '+state.pois.length+' POIs')}
+$('mapFile').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{await loadMapFile(f)}catch(err){console.error(err);alert('KMZ/KMLを読み込めませんでした: '+err.message)}};
+refresh();
+</script>
+</body>
+</html>
